@@ -1,0 +1,60 @@
+{
+  "name": "nextjs-base-starter",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbo -p 3000",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "check-all": "npm run lint & npm run type-check & wait"
+  },
+  "dependencies": {
+    "@auth/pg-adapter": "^1.10.0",
+    "@aws-sdk/client-s3": "^3.878.0",
+    "@aws-sdk/s3-request-presigner": "^3.878.0",
+    "@neondatabase/serverless": "^1.0.1",
+    "@smithy/node-http-handler": "^4.1.1",
+    "@types/next-auth": "^3.13.0",
+    "bcryptjs": "^3.0.2",
+    "framer-motion": "^12.23.12",
+    "jose": "^6.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "lucide-react": "^0.539.0",
+    "mailersend": "^2.6.0",
+    "next-auth": "^5.0.0-beta.29",
+    "nodemailer": "^6.10.1",
+    "pg": "^8.16.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sharp": "^0.34.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/line-clamp": "^0.4.4",
+    "@tailwindcss/typography": "^0.5.16",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^20.19.11",
+    "@types/nodemailer": "^7.0.1",
+    "@types/pg": "^8.15.5",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.23",
+    "next": "^15.4.6",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "supabase",
+      "unrs-resolver"
+    ],
+    "peerDependencyRules": {
+      "allowAny": [
+        "supabase"
+      ]
+    }
+  }
+}

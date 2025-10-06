@@ -1,0 +1,142 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================
+   Глобальные фоны по теме
+   (класс темы ставится на <html>)
+   ========================= */
+
+html.dark {
+  /* фон всей страницы — только для тёмной темы */
+  background: linear-gradient(135deg, #111827 0%, #0d1422 50%, #0b0b0f 100%);
+  background-size: 400% 400%;
+  animation: gradientShift 100s linear infinite alternate;
+}
+
+html.light {
+  /* светлая тема */
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
+  background-size: 400% 400%;
+  animation: gradientShift 100s linear infinite alternate;
+}
+
+/* =========================
+   Режим «чёрный ридер»
+   Применяй класс reader-force-dark на <html> или <body>
+   чтобы на странице главы фон был строго чёрный
+   ========================= */
+
+html.reader-force-dark,
+body.reader-force-dark {
+  background: #000 !important;
+  animation: none !important;
+}
+
+/* анимация градиента */
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* =========================
+   Полезные утилиты
+   ========================= */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .line-clamp-1 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}
+
+/* =========================
+   Скроллбары — тёмная тема
+   ========================= */
+html.dark::-webkit-scrollbar {
+  width: 6px;
+}
+html.dark::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+html.dark::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 3px;
+}
+html.dark::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* =========================
+   Скроллбары — светлая тема
+   ========================= */
+html.light::-webkit-scrollbar {
+  width: 6px;
+}
+html.light::-webkit-scrollbar-track {
+  background: #e2e8f0;
+}
+html.light::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+html.light::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* =========================
+   Скроллбары — «чёрный ридер»
+   ========================= */
+html.reader-force-dark::-webkit-scrollbar,
+body.reader-force-dark::-webkit-scrollbar {
+  width: 6px;
+}
+html.reader-force-dark::-webkit-scrollbar-track,
+body.reader-force-dark::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+html.reader-force-dark::-webkit-scrollbar-thumb,
+body.reader-force-dark::-webkit-scrollbar-thumb {
+  background: #2a2a2a;
+  border-radius: 3px;
+}
+html.reader-force-dark::-webkit-scrollbar-thumb:hover,
+body.reader-force-dark::-webkit-scrollbar-thumb:hover {
+  background: #3a3a3a;
+}
+/* ——— Pretty scrollbar for the horizontal feed ——— */
+.feed-scroll {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(120, 144, 156, 0.7) transparent;
+}
+
+.feed-scroll::-webkit-scrollbar {
+  height: 10px; /* only horizontal */
+}
+
+.feed-scroll::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 9999px;
+}
+
+.feed-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, rgba(59,130,246,.65), rgba(147,51,234,.65));
+  border-radius: 9999px;
+  border: 2px solid transparent;         /* creates padding */
+  background-clip: padding-box;
+}
+
+.feed-scroll:hover::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, rgba(59,130,246,.85), rgba(147,51,234,.85));
+}
