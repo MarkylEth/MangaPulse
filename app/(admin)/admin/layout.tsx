@@ -1,8 +1,6 @@
-// app/admin/layout.tsx
-import type { ReactNode } from 'react';
-import '@/app/globals.css';
+import { requireAdmin } from "@/lib/admin/guard";
 
-export default function AdminLayout({ children }: { children: ReactNode }) {
-  // без auth — просто рендерим children
-  return children;
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  await requireAdmin();
+  return <>{children}</>;
 }

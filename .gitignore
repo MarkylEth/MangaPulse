@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Разрешаем .vscode в репо
+!.vscode/**
+
+# Но не коммитим личное/временное
+.vscode/*.secret.json
+.vscode/*.local.json
+.vscode/history/
+.vscode/workspaceStorage/

@@ -1,11 +1,6 @@
 // app/admin/title-suggestions/actions.ts
 'use server';
 
-/**
- * Заглушки server actions для админ-панели предложений тайтлов.
- * Без Supabase. Ориентируемся на REST-роуты (если их ещё нет — просто не падаем).
- */
-
 type Suggestion = {
   id: number | string;
   type: 'new_title' | 'edit_title' | string;

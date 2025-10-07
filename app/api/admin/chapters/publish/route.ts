@@ -1,3 +1,4 @@
+﻿import { ensureAdminAPI } from "@/lib/admin/api-guard";
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/route-guards';
 import { publishChapterToWasabi } from '@/lib/storage/publish';
@@ -7,7 +8,7 @@ function allowByApiKey(req: Request) {
   return !!k && k === process.env.ADMIN_UPLOAD_KEY;
 }
 
-export async function POST(req: Request) {
+export async function POST(req: Request) { const guard = await ensureAdminAPI(); if (guard) return guard;
   if (!allowByApiKey(req)) {
     const auth = await requireRole(req, ['admin','moderator']);
     if (!auth.ok) return NextResponse.json({ ok:false, message:'unauthorized' }, { status: 401 });
@@ -25,3 +26,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok:false, message:String(e?.message || e) }, { status: 500 });
   }
 }
+

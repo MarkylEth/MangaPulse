@@ -1,3 +1,4 @@
+﻿import { ensureAdminAPI } from "@/lib/admin/api-guard";
 // app/api/admin/manga-moderation/cleanup/route.ts
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/route-guards';
@@ -187,7 +188,7 @@ async function performAutoCleanup(olderThanDays: number = AUTO_CLEANUP_DAYS, dry
   }
 }
 
-export async function DELETE(req: Request) {
+export async function DELETE(req: Request) { const guard = await ensureAdminAPI(); if (guard) return guard;
   console.log('[CLEANUP] ===========================================');
   console.log('[CLEANUP] DELETE request received at:', new Date().toISOString());
   console.log('[CLEANUP] Request headers:', Object.fromEntries(req.headers.entries()));
@@ -371,7 +372,7 @@ export async function DELETE(req: Request) {
 }
 
 // Получить информацию о последней автоочистке и статистику
-export async function GET(req: Request) {
+export async function GET(req: Request) { const guard = await ensureAdminAPI(); if (guard) return guard;
   console.log('[CLEANUP] GET request for stats');
   
   try {

@@ -1,6 +1,5 @@
 // repositories/catalog.ts
-// Каталог тайтлов на Postgres (Neon) через наш lib/db.ts
-// Никаких supabase.* — только SQL.
+
 
 import { many, one } from '@/lib/db';
 import { clamp, normalizeText, toStringList } from '@/lib/normalize';

@@ -1,6 +1,4 @@
 // lib/manga/hooks.ts
-// Переведено с Supabase на REST-эндпоинты (сервер → Neon).
-// Универсальные React-хуки загрузки данных о тайтле.
 
 'use client';
 

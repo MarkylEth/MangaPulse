@@ -1,9 +1,10 @@
+﻿import { ensureAdminAPI } from "@/lib/admin/api-guard";
 // app/api/admin/comment-moderation/route.ts
 import { NextResponse } from 'next/server'
 // import { many, query } from '@/lib/db' // подключим, когда определим схему
 
 /** GET: список комментов на модерации */
-export async function GET() {
+export async function GET() { const guard = await ensureAdminAPI(); if (guard) return guard;
   try {
     // TODO: заменить на SELECT из таблиц comments + флаги модерации
     const items: Array<{
@@ -23,7 +24,7 @@ export async function GET() {
 }
 
 /** POST: действие модератора (approve/reject/delete) */
-export async function POST(req: Request) {
+export async function POST(req: Request) { const guard = await ensureAdminAPI(); if (guard) return guard;
   try {
     const { id, action, reason } = await req.json().catch(() => ({}))
     if (!id || !action) {
@@ -38,3 +39,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: e?.message ?? 'Internal error' }, { status: 500 })
   }
 }
+

@@ -1,3 +1,4 @@
+﻿import { ensureAdminAPI } from "@/lib/admin/api-guard";
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 
@@ -123,7 +124,7 @@ async function replaceTranslators(mangaId: number, teamIds: number[]) {
 
 /* ---------------- GET: список заявок ---------------- */
 
-export async function GET() {
+export async function GET() { const guard = await ensureAdminAPI(); if (guard) return guard;
   try {
     const r = await query(
       `select id, type, status, payload, tags, genres, source_links,
@@ -151,7 +152,7 @@ export async function GET() {
   - { action: 'approve' | 'reject', id|sid|uid, note?, tags?, tagsOverride? }
   - иначе { payload, tags? } — создать заявку
 */
-export async function POST(req: Request) {
+export async function POST(req: Request) { const guard = await ensureAdminAPI(); if (guard) return guard;
   try {
     const raw = await req.json().catch(() => ({}));
     const { id, cast, action, note, tags, tagsOverride, payload } = normalizeBody(raw);
@@ -308,3 +309,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: e?.message ?? 'Internal error' }, { status: 500 });
   }
 }
+

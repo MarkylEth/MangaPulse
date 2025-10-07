@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: { turbo: {} },
+
   images: {
     remotePatterns: [
       // wasabi
@@ -20,5 +21,14 @@ const nextConfig = {
       { protocol: 'https', hostname: 'desu.shikimori.one' },
     ],
   },
+
+  async redirects() {
+    return [
+      { source: "/team", destination: "/teams", permanent: false },
+      { source: "/team/:slug", destination: "/teams/:slug", permanent: false },
+      { source: "/team/:slug/:path*", destination: "/teams/:slug/:path*", permanent: false },
+    ];
+  },
 };
+
 export default nextConfig;

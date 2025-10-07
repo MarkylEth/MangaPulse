@@ -1,3 +1,4 @@
+﻿import { ensureAdminAPI } from "@/lib/admin/api-guard";
 // app/api/admin/manga-moderation/route.ts
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
@@ -25,7 +26,7 @@ function uniq<T>(arr: T[]): T[] {
 }
 
 /* ----------------------------- GET: список ----------------------------- */
-export async function GET() {
+export async function GET() { const guard = await ensureAdminAPI(); if (guard) return guard;
   try {
     // Получаем заявки с дополнительными полями
     const sRes = await query<any>(
@@ -170,7 +171,7 @@ function normalize(raw: any) {
   };
 }
 
-export async function POST(req: Request) {
+export async function POST(req: Request) { const guard = await ensureAdminAPI(); if (guard) return guard;
   try {
     const raw = await req.json().catch(() => ({}));
     const { id, cast, action, note, tags, tagsOverride, kind } = normalize(raw);

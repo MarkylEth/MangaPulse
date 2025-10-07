@@ -174,7 +174,7 @@ export default function CreateTeamDialog({ onClose }: { onClose: () => void }) {
       }
 
       onClose();
-      router.push(`/team/${js.team?.slug || slug}`);
+      router.push(`/teams/${js.team?.slug || slug}`);
     } catch (err: any) {
       setError(err?.message ?? 'Неизвестная ошибка');
     } finally {
@@ -251,7 +251,7 @@ export default function CreateTeamDialog({ onClose }: { onClose: () => void }) {
                       required
                     />
                     <p className={cx('text-sm mt-2', subText)}>
-                      Будет в URL: /team/{slug || 'your-slug'}
+                    Будет в URL: /teams/{slug || 'your-slug'}
                     </p>
                   </div>
                 </div>

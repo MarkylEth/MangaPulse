@@ -1,6 +1,7 @@
 // lib/db.ts
 import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from 'pg';
 
+
 declare global {
   // чтобы HMR в dev не плодил пулы
   // eslint-disable-next-line no-var
@@ -31,7 +32,8 @@ if (process.env.NODE_ENV !== 'production') {
   global.__mp_pg_pool__ = pool;
 }
 
-// === ВАЖНО: ограничиваем T ===
+// ====== Базовые утилиты PG ======
+
 export async function query<T extends QueryResultRow = any>(
   text: string,
   params?: any[]
@@ -46,9 +48,10 @@ export async function getClient(): Promise<PoolClient> {
 export { pool };
 
 /**
- * Помощник для параметризованных SQL как template literal.
+ * Tagged template helper:
  *
  * const rows = await sql<{ id:number }>`select id from manga where title ilike ${'%naruto%'};`;
+ * // rows: {id:number}[]
  */
 export async function sql<T extends QueryResultRow = Record<string, unknown>>(
   strings: TemplateStringsArray,
@@ -76,4 +79,53 @@ export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>)
   } finally {
     client.release();
   }
+}
+
+/* =========================================================================
+ * many / one — универсальные нормализаторы результата.
+ * Работают с:
+ *  - текстовым SQL + params (выполняют query)
+ *  - Promise<T[]> (например, из sql`...`)
+ *  - T[] (уже готовый массив)
+ *  - { rows: T[] } (pg QueryResult)
+ * ========================================================================= */
+
+type RowsLike<T extends QueryResultRow> =
+  | Promise<T[]>
+  | T[]
+  | { rows: T[] }
+  | string;
+
+/** Вернёт массив строк (выполнит запрос при необходимости) */
+export async function many<T extends QueryResultRow = QueryResultRow>(
+  input: RowsLike<T>,
+  params?: any[]
+): Promise<T[]> {
+  // строка SQL → выполнить
+  if (typeof input === 'string') {
+    const res = await query<T>(input, params);
+    return res.rows as T[];
+  }
+
+  // дождаться промиса, если он есть
+  const awaited: any = await Promise.resolve(input as any);
+
+  // массив строк
+  if (Array.isArray(awaited)) return awaited as T[];
+
+  // объект с полем rows (QueryResult)
+  if (awaited && typeof awaited === 'object' && Array.isArray(awaited.rows)) {
+    return awaited.rows as T[];
+  }
+
+  return [] as T[];
+}
+
+/** Вернёт первую строку или null */
+export async function one<T extends QueryResultRow = QueryResultRow>(
+  input: RowsLike<T>,
+  params?: any[]
+): Promise<T | null> {
+  const rows = await many<T>(input as any, params);
+  return rows.length ? (rows[0] as T) : null;
 }

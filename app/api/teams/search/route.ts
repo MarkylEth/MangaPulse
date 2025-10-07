@@ -17,7 +17,6 @@ export async function GET(req: NextRequest) {
     let rows: Row[] = []
 
     if (q.length > 0) {
-      // Поиск по name OR slug (регистронезависимо), как было в Supabase .or(name.ilike, slug.ilike)
       // Используем параметризованный запрос для безопасности
       const like = `%${q}%`
       const sql = `

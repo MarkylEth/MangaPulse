@@ -3,7 +3,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { createClient } from '@/lib/supabase/client'
 import { Header } from '@/components/Header'
 import { useTheme } from '@/lib/theme/context'
 import { useAuth } from '@/lib/auth/context'
