@@ -1,4 +1,3 @@
-﻿import { ensureAdminAPI } from "@/lib/admin/api-guard";
 import { NextResponse } from "next/server";
 
 /* ================= common ================= */
@@ -151,7 +150,7 @@ async function listOne(
 }
 
 /* ================= GET ================= */
-export async function GET(req: Request) { const guard = await ensureAdminAPI(); if (guard) return guard;
+export async function GET(req: Request) {
   try {
     const sql = await getSql();
     if (!sql) return NextResponse.json({ ok: false, message: "DB not configured" }, { status: 500 });
@@ -190,7 +189,7 @@ export async function GET(req: Request) { const guard = await ensureAdminAPI(); 
 }
 
 /* ================= POST (approve / delete) ================= */
-export async function POST(req: Request) { const guard = await ensureAdminAPI(); if (guard) return guard;
+export async function POST(req: Request) {
   try {
     const sql = await getSql();
     if (!sql) return NextResponse.json({ ok: false, message: "DB not configured" }, { status: 500 });
@@ -251,4 +250,3 @@ export async function POST(req: Request) { const guard = await ensureAdminAPI();
     return NextResponse.json({ ok: false, message: e?.message || "Server error" }, { status: 500 });
   }
 }
-

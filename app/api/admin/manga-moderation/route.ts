@@ -1,4 +1,3 @@
-﻿import { ensureAdminAPI } from "@/lib/admin/api-guard";
 // app/api/admin/manga-moderation/route.ts
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
@@ -9,26 +8,74 @@ export const dynamic = 'force-dynamic';
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+/* ----------------------- helpers ----------------------- */
+
 function toStrList(v: any): string[] {
   if (v == null) return [];
-  if (Array.isArray(v)) return v.map(String).filter(Boolean);
-  if (typeof v === 'string') return v.split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
+  if (Array.isArray(v)) return v.map(String).map(s => s.trim()).filter(Boolean);
+  if (typeof v === 'string') {
+    return v.split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
+  }
   if (typeof v === 'object') {
-    const arr = Array.isArray((v as any).names) ? (v as any).names : Object.values(v);
-    return Array.isArray(arr) ? arr.map(String).filter(Boolean) : [];
+    const acc = Array.isArray((v as any).names) ? (v as any).names : Object.values(v || {});
+    return Array.isArray(acc) ? acc.map(String).map(s => s.trim()).filter(Boolean) : [];
   }
   return [];
 }
+
 function uniq<T>(arr: T[]): T[] {
-  const s = new Set<T>(); const out: T[] = [];
+  const s = new Set<T>();
+  const out: T[] = [];
   for (const x of arr) if (!s.has(x)) { s.add(x); out.push(x); }
   return out;
 }
 
+/** Список имён из массива строк/объектов { id, name }/смешанных структур */
+function toNameList(v: any): string[] {
+  if (!v) return [];
+  if (Array.isArray(v)) {
+    return v
+      .map(it => {
+        if (it == null) return '';
+        if (typeof it === 'string') return it;
+        if (typeof it === 'number') return String(it);
+        if (typeof it === 'object') return String((it as any).name ?? (it as any).title ?? (it as any).label ?? '');
+        return '';
+      })
+      .map(s => s.trim())
+      .filter(Boolean);
+  }
+  if (typeof v === 'object') return toNameList(Object.values(v));
+  if (typeof v === 'string') return [v.trim()].filter(Boolean);
+  return [];
+}
+
+function toIdList(v: any): number[] {
+  if (!v) return [];
+  const raw = Array.isArray(v) ? v : [v];
+  const ids = raw
+    .map((x) => {
+      if (x == null) return null;
+      if (typeof x === 'number') return x;
+      if (typeof x === 'string') {
+        const n = Number(x);
+        return Number.isFinite(n) ? n : null;
+      }
+      if (typeof x === 'object') {
+        const id = (x as any).id;
+        const n = Number(id);
+        return Number.isFinite(n) ? n : null;
+      }
+      return null;
+    })
+    .filter((n): n is number => n != null);
+  return Array.from(new Set(ids));
+}
+
 /* ----------------------------- GET: список ----------------------------- */
-export async function GET() { const guard = await ensureAdminAPI(); if (guard) return guard;
+
+export async function GET() {
   try {
-    // Получаем заявки с дополнительными полями
     const sRes = await query<any>(
       `select id, status, payload, created_at, tags, genres, 
               title_romaji, author_comment, author_name, user_id
@@ -36,43 +83,44 @@ export async function GET() { const guard = await ensureAdminAPI(); if (guard) r
         order by created_at desc
         limit 200`
     );
-    
+
     const suggestions = (sRes.rows ?? []).map(r => {
       const p = r?.payload ?? {};
+      // собираем человеко-читаемые строки
+      const authorStr    = (p.author ?? toNameList(p.authors).join(', ')) || null;
+      const artistStr    = (p.artist ?? toNameList(p.artists).join(', ')) || null;
+      const publisherStr = (p.publisher ?? toNameList(p.publishers).join(', ')) || null;
+
       return {
         sid: r.id,
-        uid: r.id, // для совместимости с keyFor
+        uid: r.id,
         kind: 'suggestion' as const,
-        
-        // Основные поля извлекаем из payload
+
         title: p.title_ru ?? p.title ?? 'Без названия',
         cover_url: p.cover_url ?? null,
-        author: p.author ?? null,
-        artist: p.artist ?? null,
+        author: authorStr,
+        artist: artistStr,
+        publisher: publisherStr,
         description: p.description ?? null,
         status: p.status ?? null,
-        
-        // Дополнительные поля
+
         original_title: p.original_title ?? null,
         type: p.type ?? null,
         translation_status: p.translation_status ?? null,
         age_rating: p.age_rating ?? null,
         release_year: p.release_year ?? null,
         title_romaji: r.title_romaji ?? p.title_romaji ?? null,
-        
-        // Статус модерации
+
         submission_status: r.status ?? 'pending',
         created_at: r.created_at,
         updated_at: null,
-        
-        // Жанры и теги
+
         genres: r.genres ?? p.genres ?? null,
         tags: r.tags ?? p.tags ?? null,
         manga_genres: null,
         tag_list: null,
-        
-        // Метаданные
-        payload: p, // сохраняем для детального просмотра
+
+        payload: p,
         translator_team_id: p.translator_team_id ?? null,
         author_comment: r.author_comment ?? null,
         sources: null,
@@ -81,47 +129,53 @@ export async function GET() { const guard = await ensureAdminAPI(); if (guard) r
       };
     });
 
-    // манга (как опубликованный контент)
+    // тянем также строку издателей для уже опубликованных тайтлов
     const mRes = await query<any>(
-      `select id, title, cover_url, author, artist, description, status,
-              created_at, title_romaji, slug, genres, tags, 
-              translation_status, age_rating, release_year, type
-         from manga
-        order by id desc
-        limit 200`
+      `select
+         m.id, m.title, m.cover_url, m.author, m.artist, m.description, m.status,
+         m.created_at, m.title_romaji, m.slug, m.genres, m.tags,
+         m.translation_status, m.age_rating, m.release_year, m.type,
+         coalesce((
+           select string_agg(pu.name, ', ' order by pu.name)
+             from manga_publishers mp
+             join publishers pu on pu.id = mp.publisher_id
+            where mp.manga_id = m.id
+         ), null) as publisher
+       from manga m
+      order by m.id desc
+      limit 200`
     );
-    
+
     const manga = (mRes.rows ?? []).map(r => ({
       id: r.id,
       sid: null,
       uid: null,
       kind: 'manga' as const,
-      
+
       title: r.title ?? 'Без названия',
       cover_url: r.cover_url ?? null,
       author: r.author ?? null,
       artist: r.artist ?? null,
+      publisher: r.publisher ?? null,
       description: r.description ?? null,
       status: r.status ?? null,
-      
-      // Дополнительные поля
+
       original_title: null,
       type: r.type ?? null,
       translation_status: r.translation_status ?? null,
       age_rating: r.age_rating ?? null,
       release_year: r.release_year ?? null,
       title_romaji: r.title_romaji ?? null,
-      
+
       submission_status: 'approved' as const,
       created_at: r.created_at,
       updated_at: null,
-      
-      // Жанры и теги из manga таблицы
+
       genres: r.genres ?? null,
       tags: r.tags ?? null,
       manga_genres: null,
       tag_list: null,
-      
+
       payload: null,
       translator_team_id: null,
       author_comment: null,
@@ -147,12 +201,13 @@ export async function GET() { const guard = await ensureAdminAPI(); if (guard) r
     console.error('Error in GET /api/admin/manga-moderation:', e);
     return NextResponse.json(
       { ok: false, error: e?.message ?? 'Internal error' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 /* ----------------------------- POST: модерация ----------------------------- */
+
 function normalize(raw: any) {
   const anyId = raw?.id ?? raw?.sid ?? raw?.uid ?? raw?.submission_id ?? raw?.manga_id;
   let action: string = (raw?.action ?? '').toString().toLowerCase().trim();
@@ -171,7 +226,7 @@ function normalize(raw: any) {
   };
 }
 
-export async function POST(req: Request) { const guard = await ensureAdminAPI(); if (guard) return guard;
+export async function POST(req: Request) {
   try {
     const raw = await req.json().catch(() => ({}));
     const { id, cast, action, note, tags, tagsOverride, kind } = normalize(raw);
@@ -182,88 +237,145 @@ export async function POST(req: Request) { const guard = await ensureAdminAPI();
     const treatAsSuggestion =
       (kind === 'suggestion') || cast === 'uuid' || raw?.sid || raw?.uid;
 
-    if (treatAsSuggestion) {
-      const nowIso = new Date().toISOString();
+    if (!treatAsSuggestion) {
+      return NextResponse.json({ ok: false, error: 'unsupported kind for this endpoint' }, { status: 400 });
+    }
 
-      if (action === 'reject') {
-        await query(
-          `update title_submissions
-              set status='rejected', reviewed_at=$2, review_note=$3
-            where id=$1::${cast}`,
-          [id, nowIso, note ?? null]
-        );
-        return NextResponse.json({ ok: true });
-      }
+    const nowIso = new Date().toISOString();
 
-      if (action === 'approve') {
-        const sRes = await query<any>(`select * from title_submissions where id=$1::${cast}`, [id]);
-        if (!sRes.rowCount) {
-          return NextResponse.json({ ok: false, error: 'Suggestion not found' }, { status: 404 });
-        }
+    // reject
+    if (action === 'reject') {
+      await query(
+        `update title_submissions
+            set status='rejected', reviewed_at=$2, review_note=$3
+          where id=$1::${cast}`,
+        [id, nowIso, note ?? null],
+      );
+      return NextResponse.json({ ok: true });
+    }
 
-        const row = sRes.rows[0];
-        const p = (row?.payload ?? {}) as any;
-        let mangaId: number | null = row?.manga_id ?? null;
-
-        const genreList = uniq(toStrList(p.genre_names).length ? toStrList(p.genre_names) : toStrList(p.genres));
-        const tagsFromSug = uniq([
-          ...toStrList(row?.tags),
-          ...toStrList(p.tags),
-          ...toStrList(p.tag_names),
-          ...toStrList(p.keywords),
-          ...toStrList(p.tags_csv),
-        ]);
-        const tagList = tagsOverride ? toStrList(tags) : uniq([...tagsFromSug, ...toStrList(tags)]);
-
-        if (mangaId == null) {
-          const ins = await query<{ id: number }>(
-            `insert into manga (
-               cover_url, title, title_romaji, author, artist, description,
-               status, translation_status, age_rating, release_year, type, created_at
-             ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, now())
-             returning id`,
-            [
-              p.cover_url ?? null,
-              p.title_ru ?? p.title ?? null,
-              p.title_romaji ?? null,
-              p.author ?? null,
-              p.artist ?? null,
-              p.description ?? null,
-              p.status ?? null,
-              p.translation_status ?? null,
-              p.age_rating ?? null,
-              p.release_year ?? null,
-              p.type ?? null,
-            ]
-          );
-          mangaId = ins.rows?.[0]?.id ?? null;
-          if (!mangaId) {
-            return NextResponse.json({ ok: false, error: 'Insert into manga failed' }, { status: 500 });
-          }
-        }
-
-        await query(`update manga set genres=$2, tags=$3 where id=$1`, [mangaId, genreList, tagList]);
-
-        await query(
-          `update title_submissions
-              set status='approved', reviewed_at=$2, review_note=$3, manga_id=$4
-            where id=$1::${cast}`,
-          [id, new Date().toISOString(), note ?? null, mangaId]
-        );
-
-        return NextResponse.json({ ok: true, manga_id: mangaId });
-      }
-
+    // approve
+    if (action !== 'approve') {
       return NextResponse.json({ ok: false, error: 'unknown action' }, { status: 400 });
     }
 
-    // модерация уже созданной манги (если понадобится)
-    return NextResponse.json({ ok: false, error: 'unsupported kind for this endpoint' }, { status: 400 });
+    const sRes = await query<any>(
+      `select * from title_submissions where id=$1::${cast}`,
+      [id],
+    );
+    if (!sRes.rowCount) {
+      return NextResponse.json({ ok: false, error: 'Suggestion not found' }, { status: 404 });
+    }
+
+    const row = sRes.rows[0];
+    const p = (row?.payload ?? {}) as any;
+
+    // Нормализуем жанры/теги
+    const genreList = uniq(
+      toStrList(p.genre_names).length ? toStrList(p.genre_names) : toStrList(p.genres),
+    );
+    const tagsFromSug = uniq([
+      ...toStrList(row?.tags),
+      ...toStrList(p.tags),
+      ...toStrList(p.tag_names),
+      ...toStrList(p.keywords),
+      ...toStrList(p.tags_csv),
+    ]);
+    const tagList = tagsOverride ? toStrList(tags) : uniq([...tagsFromSug, ...toStrList(tags)]);
+
+    // Нормализуем id-шники связей из payload
+    const authorIds     = toIdList(p.author_ids ?? p.authors);
+    const artistIds     = toIdList(p.artist_ids ?? p.artists);
+    const publisherIds  = toIdList(p.publisher_ids ?? p.publishers);
+
+    let mangaId: number | null = row?.manga_id ?? null;
+
+    // Транзакция
+    await query('BEGIN');
+
+    try {
+      // Вставка манги при необходимости
+      if (mangaId == null) {
+        const ins = await query<{ id: number }>(
+          `insert into manga (
+             cover_url, title, title_romaji, author, artist, description,
+             status, translation_status, age_rating, release_year, type, created_at
+           ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, now())
+           returning id`,
+          [
+            p.cover_url ?? null,
+            p.title_ru ?? p.title ?? null,
+            p.title_romaji ?? null,
+            null, // author/artist обновим после связей
+            null,
+            p.description ?? null,
+            p.status ?? null,
+            p.translation_status ?? null,
+            p.age_rating ?? null,
+            p.release_year ?? null,
+            p.type ?? null,
+          ],
+        );
+        mangaId = ins.rows?.[0]?.id ?? null;
+        if (!mangaId) throw new Error('Insert into manga failed');
+      }
+
+      // Обновляем жанры/теги
+      await query(
+        `update manga set genres=$2, tags=$3 where id=$1`,
+        [mangaId, genreList, tagList],
+      );
+
+      /* ---------- связи с людьми ---------- */
+      if (authorIds.length) {
+        const values = authorIds.map((pid, i) => `($1, $${i + 2}, 'AUTHOR')`).join(', ');
+        await query(
+          `insert into manga_people (manga_id, person_id, role)
+           values ${values}
+           on conflict (manga_id, person_id, role) do nothing`,
+          [mangaId, ...authorIds],
+        );
+      }
+      if (artistIds.length) {
+        const values = artistIds.map((pid, i) => `($1, $${i + 2}, 'ARTIST')`).join(', ');
+        await query(
+          `insert into manga_people (manga_id, person_id, role)
+           values ${values}
+           on conflict (manga_id, person_id, role) do nothing`,
+          [mangaId, ...artistIds],
+        );
+      }
+
+      /* ---------- связи с издателями ---------- */
+      if (publisherIds.length) {
+        const values = publisherIds.map((pubId, i) => `($1, $${i + 2})`).join(', ');
+        await query(
+          `insert into manga_publishers (manga_id, publisher_id)
+           values ${values}
+           on conflict (manga_id, publisher_id) do nothing`,
+          [mangaId, ...publisherIds],
+        );
+      }
+
+      // Обновляем статус заявки
+      await query(
+        `update title_submissions
+            set status='approved', reviewed_at=$2, review_note=$3, manga_id=$4
+          where id=$1::${cast}`,
+        [id, nowIso, note ?? null, mangaId],
+      );
+
+      await query('COMMIT');
+      return NextResponse.json({ ok: true, manga_id: mangaId });
+    } catch (e) {
+      await query('ROLLBACK');
+      throw e;
+    }
   } catch (e: any) {
     console.error('Error in POST /api/admin/manga-moderation:', e);
     return NextResponse.json(
       { ok: false, error: e?.message ?? 'Internal error' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -24,12 +24,21 @@ export async function getPublicChaptersByManga(
   const lim = Math.max(0, Math.floor(limit));
   const limitSql = lim ? ` limit $${params.push(lim)}` : '';
 
+  // ВАЖНО: Используем volume, а также создаём алиас volume_index
   const base = `
-    select id, manga_id, coalesce(chapter_number,0) as chapter_number,
-           coalesce(volume,0) as volume, coalesce(title,'') as title,
-           status, pages_count, created_at, updated_at
-      from chapters
-     where manga_id = $1`;
+    select 
+      id, 
+      manga_id, 
+      coalesce(chapter_number,0) as chapter_number,
+      volume,
+      volume as volume_index,
+      coalesce(title,'') as title,
+      status, 
+      pages_count, 
+      created_at, 
+      updated_at
+    from chapters
+    where manga_id = $1`;
 
   const sqlWithStatus    = `${base} and lower(status) = 'published' order by ${orderBy}${limitSql}`;
   const sqlWithoutStatus = `${base} order by ${orderBy}${limitSql}`;

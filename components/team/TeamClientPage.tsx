@@ -762,7 +762,7 @@ export default function TeamClientPage({ slug }: { slug: string }): JSX.Element 
                 ) : (
                   <div className="grid gap-4 sm:gap-6 grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
                     {titles.map((t, index) => (
-                      <motion.a key={t.id} href={`/manga/${t.id}`} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}
+                      <motion.a key={t.id} href={`/title/${t.id}`} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}
                         whileHover={{ y: -8, scale: 1.02 }}
                         className={`group block overflow-hidden rounded-xl border shadow-sm transition-all hover:shadow-lg ${
                           theme === 'light' ? 'border-slate-200 bg-white hover:border-blue-300' : 'border-slate-700 bg-slate-800/60 hover:border-blue-500'

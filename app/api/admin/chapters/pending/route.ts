@@ -1,4 +1,3 @@
-﻿import { ensureAdminAPI } from "@/lib/admin/api-guard";
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { requireRole } from '@/lib/auth/route-guards';
@@ -8,7 +7,7 @@ import { requireRole } from '@/lib/auth/route-guards';
  * Возвращает главы, ожидающие проверки (ready | draft), не одобренные.
  * Требует роль admin|moderator.
  */
-export async function GET(req: Request) { const guard = await ensureAdminAPI(); if (guard) return guard;
+export async function GET(req: Request) {
   const auth = await requireRole(req, ['admin', 'moderator']);
   if (!auth.ok) return NextResponse.json({ ok: false, message: 'unauthorized' }, { status: 401 });
 
@@ -36,4 +35,3 @@ export async function GET(req: Request) { const guard = await ensureAdminAPI(); 
 
   return NextResponse.json({ ok: true, items: rows });
 }
-

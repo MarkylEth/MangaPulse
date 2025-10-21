@@ -1,4 +1,3 @@
-﻿import { ensureAdminAPI } from "@/lib/admin/api-guard";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -23,7 +22,7 @@ async function getSql(): Promise<SqlFn | null> {
   return sql;
 }
 
-export async function GET(req: Request) { const guard = await ensureAdminAPI(); if (guard) return guard;
+export async function GET(req: Request) {
   try {
     const sql = await getSql();
     if (!sql) return NextResponse.json({ ok:false, items:[], total:0, hint:"DB not configured" });
@@ -71,4 +70,3 @@ export async function GET(req: Request) { const guard = await ensureAdminAPI(); 
     return NextResponse.json({ ok:false, message:e?.message || "server error" }, { status:500 });
   }
 }
-

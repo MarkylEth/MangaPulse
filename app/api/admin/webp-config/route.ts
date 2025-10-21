@@ -1,4 +1,3 @@
-﻿import { ensureAdminAPI } from "@/lib/admin/api-guard";
 // app/api/admin/webp-config/route.ts
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/route-guards';
@@ -26,7 +25,7 @@ const DEFAULT_CONFIG: WebPConfig = {
 };
 
 // Получить текущие настройки
-export async function GET(req: Request) { const guard = await ensureAdminAPI(); if (guard) return guard;
+export async function GET(req: Request) {
   const auth = await requireRole(req, ['admin', 'moderator']);
   if (!auth.ok) {
     return NextResponse.json({ ok: false, message: auth.reason }, { status: auth.status });
@@ -70,7 +69,7 @@ export async function GET(req: Request) { const guard = await ensureAdminAPI(); 
 }
 
 // Обновить настройки
-export async function POST(req: Request) { const guard = await ensureAdminAPI(); if (guard) return guard;
+export async function POST(req: Request) {
   const auth = await requireRole(req, ['admin']);
   if (!auth.ok) {
     return NextResponse.json({ ok: false, message: auth.reason }, { status: auth.status });
@@ -159,7 +158,7 @@ export async function POST(req: Request) { const guard = await ensureAdminAPI();
 }
 
 // Получить статистику использования WebP
-export async function PUT(req: Request) { const guard = await ensureAdminAPI(); if (guard) return guard;
+export async function PUT(req: Request) {
   const auth = await requireRole(req, ['admin']);
   if (!auth.ok) {
     return NextResponse.json({ ok: false, message: auth.reason }, { status: auth.status });

@@ -161,8 +161,8 @@ export default function ChapterReviewPanel() {
           const isReady = String(q.status).toLowerCase() === 'ready';
           const chapterLabel = `Том ${q.volume || 0} · Глава ${q.chapter_number}`;
           const tUrl = q.manga_slug
-            ? `/manga/${q.manga_slug}`
-            : `/manga/${q.manga_id}`;
+            ? `/title/${q.manga_slug}`
+            : `/title/${q.manga_id}`;
 
           return (
             <div key={q.id} className={`rounded-xl p-4 ${card}`}>

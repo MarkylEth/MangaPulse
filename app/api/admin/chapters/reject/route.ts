@@ -1,11 +1,10 @@
-﻿import { ensureAdminAPI } from "@/lib/admin/api-guard";
 // app/api/admin/chapters/reject/route.ts
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(req: Request) { const guard = await ensureAdminAPI(); if (guard) return guard;
+export async function POST(req: Request) {
   console.log('[MINIMAL-REJECT] Starting request processing');
   
   try {

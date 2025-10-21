@@ -3,7 +3,13 @@ import 'server-only';
 import type { NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
-import { SESSION_COOKIE, verifySession } from '@/lib/auth/session';
+
+import { verifySession } from '@/lib/auth/session';
+import {
+  SESSION_COOKIE,
+  SESSION_JWT_SECRET,
+  shouldUseSecure,
+} from '@/lib/auth/config';
 
 const JWT_COOKIE_CANDIDATES = ['auth_token', 'mp_jwt', 'jwt', 'access_token', 'token'];
 
@@ -16,18 +22,6 @@ type CookieSetOpts = {
 };
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me'; // в проде обязательно переопредели
-
-function shouldUseSecure(req?: NextRequest | Request) {
-  const fwd = (req as NextRequest | undefined)?.headers?.get?.('x-forwarded-proto');
-  if (fwd === 'https') return true;
-  const site =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.NEXTAUTH_URL ||
-    process.env.SITE_URL ||
-    '';
-  return site.startsWith('https://');
-}
 
 /* ---------- cookie helpers (Next 15: асинхронные) ---------- */
 async function setCookie(name: string, value: string, opts: CookieSetOpts) {
@@ -51,7 +45,7 @@ async function getCookie(name: string) {
 /* ========== Создание / удаление сессии ========== */
 export async function createSession(userId: string, req?: NextRequest | Request) {
   const expiresInSec = Math.floor(THIRTY_DAYS_MS / 1000);
-  const token = jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: expiresInSec });
+  const token = jwt.sign({ sub: userId }, SESSION_JWT_SECRET, { expiresIn: expiresInSec });
 
   await setCookie(SESSION_COOKIE, token, {
     httpOnly: true,
@@ -97,7 +91,7 @@ export async function getUserIdFromRequest(req?: NextRequest | Request): Promise
   // 1) Основная cookie-сессия
   const token = (await getCookie(SESSION_COOKIE))?.value ?? null;
   if (token) {
-    const payload: any = await verifySession(token);
+    const payload: any = verifySession(token);
     const id = pickUserId(payload);
     if (id) return id;
   }
@@ -106,7 +100,7 @@ export async function getUserIdFromRequest(req?: NextRequest | Request): Promise
   const bearer = getBearer(req);
   if (bearer) {
     try {
-      const payload: any = jwt.verify(bearer, JWT_SECRET);
+      const payload: any = jwt.verify(bearer, SESSION_JWT_SECRET);
       const id = pickUserId(payload);
       if (id) return id;
     } catch {}
@@ -118,7 +112,7 @@ export async function getUserIdFromRequest(req?: NextRequest | Request): Promise
     const v = store.get(name)?.value;
     if (!v) continue;
     try {
-      const payload: any = jwt.verify(v, JWT_SECRET);
+      const payload: any = jwt.verify(v, SESSION_JWT_SECRET);
       const id = pickUserId(payload);
       if (id) return id;
     } catch {}
@@ -127,7 +121,8 @@ export async function getUserIdFromRequest(req?: NextRequest | Request): Promise
   return null;
 }
 
-export async function getAuthUser(req?: NextRequest | Request) {
+/** Лёгкая версия: вернуть только { id } */
+export async function getAuthUserId(req?: NextRequest | Request) {
   const id = await getUserIdFromRequest(req);
   return id ? { id } : null;
 }

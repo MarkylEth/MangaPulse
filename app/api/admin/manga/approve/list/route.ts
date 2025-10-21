@@ -1,10 +1,9 @@
-﻿import { ensureAdminAPI } from "@/lib/admin/api-guard";
 // app/api/admin/manga/approve/list/route.ts
 import { NextResponse } from 'next/server'
 // import { many } from '@/lib/db'
 
 /** GET: список тайтлов, ожидающих апрува (модерации) */
-export async function GET() { const guard = await ensureAdminAPI(); if (guard) return guard;
+export async function GET() {
   try {
     // TODO: SELECT из таблицы заявок/буфера тайтлов до публикации
     const items: Array<{
@@ -20,4 +19,3 @@ export async function GET() { const guard = await ensureAdminAPI(); if (guard) r
     return NextResponse.json({ ok: false, error: e?.message ?? 'Internal error' }, { status: 500 })
   }
 }
-

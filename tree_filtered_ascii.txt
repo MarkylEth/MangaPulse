@@ -1,0 +1,644 @@
+﻿MangaPulse1
++-- .eslintrc.json
++-- New-AsciiTree.ps1
++-- next-env.d.ts
++-- package.json
++-- plan.md
++-- pnpm-lock.yaml
++-- postcss.config.js
++-- README.md
++-- tailwind.config.ts
++-- tree_filtered_ascii.txt
++-- tsconfig.json
++-- vercel.json
++-- app
+|   +-- globals.css
+|   +-- layout.tsx
+|   +-- page.tsx
+|   +-- providers.tsx
+|   +-- (admin)
+|   |   \-- admin
+|   |       +-- ChapterReviewPanel.tsx
+|   |       +-- layout.tsx
+|   |       +-- page.tsx
+|   |       +-- manga
+|   |       |   +-- page.tsx
+|   |       \-- title-suggestions
+|   |           +-- actions.ts
+|   +-- add-title
+|   |   +-- page.tsx
+|   +-- api
+|   |   +-- slug.ts
+|   |   +-- admin
+|   |   |   +-- chapters
+|   |   |   |   +-- pending
+|   |   |   |   |   +-- route.ts
+|   |   |   |   +-- publish
+|   |   |   |   |   +-- route.ts
+|   |   |   |   \-- reject
+|   |   |   |       +-- route.ts
+|   |   |   +-- comment-moderation
+|   |   |   |   +-- route.ts
+|   |   |   +-- comment-reports
+|   |   |   |   +-- route.ts
+|   |   |   |   \-- [id]
+|   |   |   |       +-- route.ts
+|   |   |   +-- env
+|   |   |   |   +-- route.ts
+|   |   |   +-- manga
+|   |   |   |   +-- approve
+|   |   |   |   |   +-- route.ts
+|   |   |   |   |   \-- list
+|   |   |   |   |       +-- route.ts
+|   |   |   |   \-- list
+|   |   |   |       +-- route.ts
+|   |   |   +-- manga-moderation
+|   |   |   |   +-- route.ts
+|   |   |   |   \-- cleanup
+|   |   |   |       +-- route.ts
+|   |   |   +-- mod
+|   |   |   |   \-- comments
+|   |   |   |       +-- route.ts
+|   |   |   +-- refresh
+|   |   |   |   +-- home
+|   |   |   |   |   +-- route.ts
+|   |   |   |   \-- trending
+|   |   |   |       +-- route.ts
+|   |   |   +-- stats
+|   |   |   |   +-- route.ts
+|   |   |   +-- title-submissions
+|   |   |   |   +-- route.ts
+|   |   |   +-- title-suggestions
+|   |   |   |   +-- route.ts
+|   |   |   +-- users
+|   |   |   |   +-- route.ts
+|   |   |   |   +-- [id]
+|   |   |   |   |   +-- route.ts
+|   |   |   |   +-- profile
+|   |   |   |   |   +-- route.ts
+|   |   |   |   \-- security
+|   |   |   |       +-- create-reset-link
+|   |   |   |       |   +-- route.ts
+|   |   |   |       \-- revoke-sessions
+|   |   |   |           +-- route.ts
+|   |   |   \-- webp-config
+|   |   |       +-- route.ts
+|   |   +-- auth
+|   |   |   +-- google
+|   |   |   |   +-- route.ts
+|   |   |   |   \-- callback
+|   |   |   |       +-- route.ts
+|   |   |   +-- login
+|   |   |   |   +-- route.ts
+|   |   |   +-- logout
+|   |   |   |   +-- route.ts
+|   |   |   +-- me
+|   |   |   |   +-- route.ts
+|   |   |   +-- password
+|   |   |   |   +-- request
+|   |   |   |   |   +-- route.ts
+|   |   |   |   \-- reset
+|   |   |   |       +-- route.ts
+|   |   |   +-- register
+|   |   |   |   +-- route.ts
+|   |   |   +-- send
+|   |   |   |   +-- route.ts
+|   |   |   \-- verify
+|   |   |       +-- route.ts
+|   |   +-- banners
+|   |   |   +-- route.ts
+|   |   +-- catalog
+|   |   |   +-- route.ts
+|   |   +-- chapters
+|   |   |   +-- route.ts
+|   |   |   +-- [id]
+|   |   |   |   +-- route.ts
+|   |   |   |   +-- likes
+|   |   |   |   |   +-- route.ts
+|   |   |   |   |   \-- count
+|   |   |   |   |       +-- route.ts
+|   |   |   |   +-- metrics
+|   |   |   |   |   +-- route.ts
+|   |   |   |   +-- teams
+|   |   |   |   |   +-- route.ts
+|   |   |   |   \-- vote
+|   |   |   |       +-- route.ts
+|   |   |   +-- cleanup
+|   |   |   |   \-- [id]
+|   |   |   |       +-- route.ts
+|   |   |   +-- commit
+|   |   |   |   +-- route.ts
+|   |   |   +-- debug
+|   |   |   |   +-- route.ts
+|   |   |   +-- latest
+|   |   |   |   +-- route.ts
+|   |   |   +-- moderation
+|   |   |   |   +-- approve
+|   |   |   |   |   +-- route.ts
+|   |   |   |   \-- reject
+|   |   |   |       +-- route.ts
+|   |   |   +-- start
+|   |   |   |   +-- route.ts
+|   |   |   +-- stream
+|   |   |   |   +-- route.ts
+|   |   |   \-- update-teams
+|   |   |       +-- route.ts
+|   |   +-- chats
+|   |   |   +-- route.ts
+|   |   |   +-- [chatId]
+|   |   |   |   +-- route.ts
+|   |   |   |   +-- messages
+|   |   |   |   |   +-- route.ts
+|   |   |   |   |   \-- [messageId]
+|   |   |   |   |       \-- react
+|   |   |   |   |           +-- route.ts
+|   |   |   |   +-- pin
+|   |   |   |   |   +-- route.ts
+|   |   |   |   +-- reactions
+|   |   |   |   |   +-- route.ts
+|   |   |   |   +-- read
+|   |   |   |   |   +-- route.ts
+|   |   |   |   +-- sse
+|   |   |   |   |   +-- route.ts
+|   |   |   |   \-- typing
+|   |   |   |       +-- route.ts
+|   |   |   \-- list
+|   |   |       +-- route.ts
+|   |   +-- comments
+|   |   |   \-- report
+|   |   |       +-- route.ts
+|   |   +-- creator
+|   |   |   \-- [person]
+|   |   |       +-- route.ts
+|   |   |       \-- titles
+|   |   |           +-- route.ts
+|   |   +-- cron
+|   |   |   \-- cleanup-submissions
+|   |   |       +-- route.ts
+|   |   +-- editManga
+|   |   |   +-- route.ts
+|   |   +-- envcheck
+|   |   |   +-- route.ts
+|   |   +-- health
+|   |   |   +-- route.ts
+|   |   +-- image-proxy
+|   |   |   +-- route.ts
+|   |   +-- library
+|   |   |   \-- bulk
+|   |   |       +-- route.ts
+|   |   +-- manga
+|   |   |   +-- [id]
+|   |   |   |   +-- route.ts
+|   |   |   |   +-- bundle
+|   |   |   |   |   +-- route.ts
+|   |   |   |   +-- chapters
+|   |   |   |   |   +-- route.ts
+|   |   |   |   |   \-- upload
+|   |   |   |   |       +-- route.ts
+|   |   |   |   +-- comments
+|   |   |   |   |   +-- route.ts
+|   |   |   |   |   \-- [commentId]
+|   |   |   |   |       +-- route.ts
+|   |   |   |   |       \-- report
+|   |   |   |   |           +-- route.ts
+|   |   |   |   +-- genres
+|   |   |   |   |   +-- route.ts
+|   |   |   |   +-- library
+|   |   |   |   |   +-- route.ts
+|   |   |   |   +-- library-stats
+|   |   |   |   |   +-- route.ts
+|   |   |   |   +-- ratings
+|   |   |   |   |   +-- route.ts
+|   |   |   |   +-- relations
+|   |   |   |   |   +-- route.ts
+|   |   |   |   +-- tags
+|   |   |   |   |   +-- route.ts
+|   |   |   |   \-- teams
+|   |   |   |       +-- route.ts
+|   |   |   |       \-- [teamId]
+|   |   |   |           +-- route.ts
+|   |   |   +-- approve
+|   |   |   |   +-- route.ts
+|   |   |   +-- list
+|   |   |   |   +-- route.ts
+|   |   |   +-- new
+|   |   |   |   +-- route.ts
+|   |   |   +-- search
+|   |   |   |   +-- route.ts
+|   |   |   +-- trending
+|   |   |   |   +-- route.ts
+|   |   |   |   \-- cached
+|   |   |   |       +-- route.ts
+|   |   |   \-- update-status
+|   |   |       +-- route.ts
+|   |   +-- moderation
+|   |   |   +-- banned
+|   |   |   |   +-- route.ts
+|   |   |   +-- comments
+|   |   |   |   +-- route.ts
+|   |   |   \-- rules
+|   |   |       +-- route.ts
+|   |   |       \-- list
+|   |   |           +-- route.ts
+|   |   +-- news
+|   |   |   +-- route.ts
+|   |   |   +-- [id]
+|   |   |   |   +-- route.ts
+|   |   |   |   \-- comments
+|   |   |   |       +-- route.ts
+|   |   |   |       \-- [commentId]
+|   |   |   |           +-- route.ts
+|   |   |   \-- can-post
+|   |   |       +-- route.ts
+|   |   +-- page-comments
+|   |   |   +-- route.ts
+|   |   |   \-- [pageId]
+|   |   |       \-- [commentId]
+|   |   |           \-- report
+|   |   |               +-- route.ts
+|   |   +-- people
+|   |   |   +-- route.ts
+|   |   |   +-- [person]
+|   |   |   |   +-- route.ts
+|   |   |   |   \-- titles
+|   |   |   |       +-- route.ts
+|   |   |   \-- search
+|   |   |       +-- route.ts
+|   |   +-- ping
+|   |   |   +-- route.ts
+|   |   +-- profile
+|   |   |   +-- route.ts
+|   |   |   +-- [handle]
+|   |   |   |   +-- route.ts
+|   |   |   |   \-- teams
+|   |   |   |       +-- route.ts
+|   |   |   +-- by-username
+|   |   |   |   +-- route.ts
+|   |   |   \-- check-username
+|   |   |       +-- route.ts
+|   |   +-- publishers
+|   |   |   +-- route.ts
+|   |   |   +-- [publisher]
+|   |   |   |   +-- route.ts
+|   |   |   |   \-- titles
+|   |   |   |       +-- route.ts
+|   |   |   \-- search
+|   |   |       +-- route.ts
+|   |   +-- r2
+|   |   |   \-- presign
+|   |   |       +-- route.ts
+|   |   +-- reader
+|   |   |   +-- [mangaId]
+|   |   |   |   \-- volume
+|   |   |   |       +-- route.ts
+|   |   |   |       \-- [vol]
+|   |   |   |           \-- chapters
+|   |   |   |               +-- route.ts
+|   |   |   |               \-- [chapter]
+|   |   |   |                   \-- pages
+|   |   |   |                       +-- route.ts
+|   |   |   +-- bookmarks
+|   |   |   |   +-- route.ts
+|   |   |   |   +-- by-manga
+|   |   |   |   |   \-- [manga_id]
+|   |   |   |   |       +-- route.ts
+|   |   |   |   \-- continue
+|   |   |   |       +-- route.ts
+|   |   |   +-- chapter
+|   |   |   |   \-- [chapterId]
+|   |   |   |       +-- aggregate
+|   |   |   |       |   +-- route.ts
+|   |   |   |       \-- pages
+|   |   |   |           +-- route.ts
+|   |   |   +-- chapters
+|   |   |   |   \-- [chapterId]
+|   |   |   |       +-- aggregate
+|   |   |   |       |   +-- route.ts
+|   |   |   |       \-- pages
+|   |   |   |           +-- route.ts
+|   |   |   +-- comments
+|   |   |   |   \-- [commentId]
+|   |   |   |       +-- route.ts
+|   |   |   |       \-- like
+|   |   |   |           +-- route.ts
+|   |   |   \-- pages
+|   |   |       \-- [pageId]
+|   |   |           \-- comments
+|   |   |               +-- route.ts
+|   |   |               \-- [commentId]
+|   |   |                   +-- route.ts
+|   |   |                   \-- like
+|   |   |                       +-- route.ts
+|   |   +-- rpc
+|   |   |   \-- is_team_leader_of_manga
+|   |   |       +-- route.ts
+|   |   +-- storage
+|   |   |   \-- presign
+|   |   |       +-- route.ts
+|   |   +-- teams
+|   |   |   +-- route.ts
+|   |   |   +-- [slug]
+|   |   |   |   +-- _utils.ts
+|   |   |   |   +-- route.ts
+|   |   |   |   +-- edit
+|   |   |   |   |   +-- route.ts
+|   |   |   |   +-- follow
+|   |   |   |   |   +-- route.ts
+|   |   |   |   +-- member-role
+|   |   |   |   |   +-- route.ts
+|   |   |   |   +-- members
+|   |   |   |   |   +-- route.ts
+|   |   |   |   +-- posts
+|   |   |   |   |   +-- route.ts
+|   |   |   |   |   \-- [postId]
+|   |   |   |   |       +-- route.ts
+|   |   |   |   |       +-- comments
+|   |   |   |   |       |   +-- route.ts
+|   |   |   |   |       |   \-- [commentId]
+|   |   |   |   |       |       +-- route.ts
+|   |   |   |   |       +-- like
+|   |   |   |   |       |   +-- route.ts
+|   |   |   |   |       \-- pin
+|   |   |   |   |           +-- route.ts
+|   |   |   |   +-- stats
+|   |   |   |   |   +-- route.ts
+|   |   |   |   \-- titles
+|   |   |   |       +-- route.ts
+|   |   |   \-- search
+|   |   |       +-- route.ts
+|   |   +-- title-submissions
+|   |   |   +-- route.ts
+|   |   |   \-- list
+|   |   |       +-- route.ts
+|   |   +-- title-suggestions
+|   |   |   +-- route.ts
+|   |   +-- upload
+|   |   |   +-- route.ts
+|   |   |   \-- delete
+|   |   |       +-- route.ts
+|   |   +-- user-library
+|   |   |   +-- route.ts
+|   |   +-- users
+|   |   |   \-- search
+|   |   |       +-- route.ts
+|   |   \-- views
+|   |       +-- route.ts
+|   +-- catalog
+|   |   +-- page.tsx
+|   +-- creator
+|   |   \-- [handle]
+|   |       +-- page.tsx
+|   +-- dev
+|   |   \-- r2-upload
+|   |       +-- page.tsx
+|   +-- fonts
+|   +-- forgot-password
+|   |   +-- page.tsx
+|   +-- login
+|   |   +-- page.tsx
+|   +-- messages
+|   |   +-- page.tsx
+|   |   \-- [chatId]
+|   |       +-- page.tsx
+|   +-- news
+|   |   \-- [id]
+|   |       +-- page.tsx
+|   +-- profile
+|   |   \-- [handle]
+|   |       +-- page.tsx
+|   +-- publisher
+|   |   \-- [handle]
+|   |       +-- page.tsx
+|   +-- reset-password
+|   |   +-- page.tsx
+|   +-- teams
+|   |   \-- [slug]
+|   |       +-- page.tsx
+|   \-- title
+|       \-- [id]
+|           +-- page.tsx
+|           +-- chapter
+|           |   \-- [chapterId]
+|           |       +-- page.tsx
+|           +-- edit
+|           |   +-- page.tsx
+|           \-- v
+|               \-- [vol]
+|                   \-- c
+|                       \-- [chapter]
+|                           +-- page.tsx
+|                           \-- p
+|                               \-- [p]
+|                                   +-- page.tsx
++-- components
+|   +-- AddChapterButton.tsx
+|   +-- AddRelatedButton.tsx
+|   +-- AuthLoader.tsx
+|   +-- ChapterLikeButton.tsx
+|   +-- ChapterReader.tsx
+|   +-- ChatWindow.tsx
+|   +-- ForceReaderDark.tsx
+|   +-- Header.tsx
+|   +-- HeroCarousel.tsx
+|   +-- PageComments.tsx
+|   +-- ProtectedRoute.tsx
+|   +-- RelatedTitlesRow.tsx
+|   +-- ThemeToggle.tsx
+|   +-- TitleBookmarks.tsx
+|   +-- ViewCounter.tsx
+|   +-- add-title
+|   |   +-- AddTitleModal.tsx
+|   |   +-- AddTitlePage.tsx
+|   +-- admin
+|   |   +-- AdminDashboard.tsx
+|   |   +-- AdminStats.tsx
+|   |   +-- CommentModeration.tsx
+|   |   +-- MangaManagement.tsx
+|   |   +-- SystemSettings.tsx
+|   |   +-- TitleSuggestions.tsx
+|   |   +-- UserManagement.tsx
+|   +-- auth
+|   |   +-- AuthModal.tsx
+|   |   +-- AuthProvider.tsx
+|   +-- catalog
+|   |   +-- CatalogCard.tsx
+|   |   +-- CatalogFilters.tsx
+|   |   +-- CatalogGrid.tsx
+|   |   +-- CatalogPage.tsx
+|   |   +-- CatalogPagination.tsx
+|   |   +-- CatalogSearch.tsx
+|   |   +-- CatalogSort.tsx
+|   |   +-- types.ts
+|   |   \-- filters
+|   |       +-- CheckboxFilter.tsx
+|   |       +-- FilterSection.tsx
+|   |       +-- GenreFilter.tsx
+|   |       +-- RangeFilter.tsx
+|   |       +-- TagFilter.tsx
+|   +-- comments
+|   |   +-- CommentEditor.tsx
+|   |   +-- CommentList.tsx
+|   |   +-- CommentSection.tsx
+|   |   +-- ReportForm.tsx
+|   |   \-- news
+|   |       +-- formatNews.tsx
+|   +-- feed
+|   |   +-- CompactFeedRow.tsx
+|   +-- home
+|   |   +-- CompactMangaCard.tsx
+|   |   +-- HeroCarousel.tsx
+|   |   +-- HomePage.tsx
+|   |   +-- LiveCard.tsx
+|   |   +-- MiniMangaCard.tsx
+|   |   +-- TeamNewsRow.tsx
+|   |   +-- TopRatedRail.tsx
+|   |   +-- types.ts
+|   +-- manga
+|   |   +-- MangaSubmissionModal.tsx
+|   |   \-- [chapterId]
+|   |       +-- page.tsx
+|   +-- news
+|   |   +-- AddNewsModal.tsx
+|   |   +-- CreateNewsEntry.tsx
+|   |   +-- TeamNewsRow.tsx
+|   +-- profile
+|   |   +-- EditProfileModal.tsx
+|   |   +-- MangaCard.tsx
+|   |   +-- ProfileBanner.tsx
+|   |   +-- ProfilePage.tsx
+|   |   +-- ProfileStats.tsx
+|   |   +-- ProfileTabs.tsx
+|   |   +-- types.ts
+|   +-- PublisherAndCreator
+|   |   +-- creator
+|   |   |   +-- CreatorPage.tsx
+|   |   +-- entity
+|   |   |   +-- EntityPage.tsx
+|   |   |   +-- types.ts
+|   |   |   \-- parts
+|   |   |       +-- EntityBanner.tsx
+|   |   |       +-- EntityStats.tsx
+|   |   |       +-- EntityTabs.tsx
+|   |   +-- publisher
+|   |   |   +-- PublisherPage.tsx
+|   |   \-- simple
+|   |       +-- SimpleTitlesPage.tsx
+|   +-- team
+|   |   +-- TeamClientPage.tsx
+|   |   +-- TeamMembers.tsx
+|   |   +-- TeamOverview.tsx
+|   |   +-- TeamPosts.tsx
+|   |   +-- TeamResources.tsx
+|   |   +-- TeamShell.tsx
+|   |   +-- TeamTitles.tsx
+|   +-- teams
+|   |   +-- CreateTeamButton.tsx
+|   |   +-- CreateTeamDialog.tsx
+|   |   +-- CreateTeamFab.tsx
+|   +-- title-page
+|   |   +-- ChaptersPanel.tsx
+|   |   +-- DescriptionInfo.tsx
+|   |   +-- MangaTitlePage.tsx
+|   |   +-- RatingModalLinear.tsx
+|   |   +-- SidebarProgress.tsx
+|   |   +-- StarRating.tsx
+|   |   +-- types.ts
+|   \-- ui
+|       +-- AssembleLogoLoader.tsx
+|       +-- CollapsibleText.tsx
+|       +-- ImageUpload.tsx
+|       +-- Select.tsx
++-- hooks
+|   +-- MangaHooks.ts
+|   +-- useCatalogData.ts
+|   +-- useCatalogFilters.ts
+|   +-- useCatalogPagination.ts
+|   +-- useChapterFeed.ts
+|   +-- useMangaCatalog.ts
+|   +-- useTeamNews.ts
++-- lib
+|   +-- abs.ts
+|   +-- anti-bruteforce.ts
+|   +-- asList.ts
+|   +-- auth.ts
+|   +-- authx.ts
+|   +-- csrf.ts
+|   +-- db.ts
+|   +-- email-templates.ts
+|   +-- hash.ts
+|   +-- http.ts
+|   +-- image-webp.ts
+|   +-- libraryQueue.ts
+|   +-- list.ts
+|   +-- mail.ts
+|   +-- mod-rules.ts
+|   +-- normalize.ts
+|   +-- public-url.ts
+|   +-- r2.ts
+|   +-- rate-limit.ts
+|   +-- resend.ts
+|   +-- safeImageSrc.ts
+|   +-- slug.ts
+|   +-- taxonomy.ts
+|   +-- url.ts
+|   +-- utils.ts
+|   +-- validate.ts
+|   +-- wasabi.ts
+|   +-- wasabi-client.ts
+|   +-- admin
+|   |   +-- guard.ts
+|   +-- auth
+|   |   +-- config.ts
+|   |   +-- email.ts
+|   |   +-- getAuthUser.ts
+|   |   +-- get-user.ts
+|   |   +-- guards.ts
+|   |   +-- navigation.ts
+|   |   +-- password.ts
+|   |   +-- permissions.ts
+|   |   +-- route-guards.ts
+|   |   +-- server.ts
+|   |   +-- session.ts
+|   |   +-- tokens.ts
+|   |   \-- context
+|   |       +-- AddTitleModal.tsx
+|   +-- catalog
+|   |   +-- constants.ts
+|   |   +-- filters.ts
+|   |   +-- normalize.ts
+|   +-- data
+|   |   +-- chapters.ts
+|   +-- db
+|   |   +-- users.ts
+|   +-- manga
+|   |   +-- hooks.ts
+|   |   +-- map.ts
+|   |   +-- taxonomy.ts
+|   +-- navigation
+|   |   +-- openMangaOrBookmark.ts
+|   +-- net
+|   |   +-- ip.ts
+|   +-- reader
+|   |   +-- settings.ts
+|   |   +-- ui-settings.ts
+|   +-- realtime
+|   |   +-- sse-broker.ts
+|   +-- storage
+|   |   +-- clients.ts
+|   |   +-- publish.ts
+|   |   +-- r2.ts
+|   |   +-- r2-presign.ts
+|   |   +-- r2-upload-client.ts
+|   |   \-- r2-ping
+|   |       +-- route.ts
+|   +-- team
+|   |   +-- format.ts
+|   |   +-- leader.ts
+|   |   +-- roles.ts
+|   |   +-- titles.ts
+|   \-- theme
+|       +-- context.tsx
+\-- public
+    +-- banners
+    +-- images
+    \-- loader

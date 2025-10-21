@@ -11,14 +11,14 @@ import {
   Settings,
   ChevronRight,
   Shield,
-  FileCheck2, // ← новая иконка
+  FileCheck2,
 } from 'lucide-react';
 import { useTheme } from '@/lib/theme/context';
 import { Header } from '@/components/Header';
 
 // секции админки
 import { AdminStats } from './AdminStats';
-import { UserManagement } from './UserManagement';
+import UserManagement from './UserManagement';
 import MangaManagement from './MangaManagement';
 import CommentModeration from './CommentModeration';
 import { SystemSettings } from './SystemSettings';
@@ -42,22 +42,21 @@ export default function AdminDashboard() {
   const [activeSection, setActiveSection] = useState<AdminSection>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const pageBg =
-    theme === 'light'
-      ? 'bg-gray-50 text-gray-900'
-      : 'bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-gray-100';
+  const pageBg = 'bg-white text-black dark:bg-[#0f0f0f] dark:text-white';
+  const textClass = 'text-black dark:text-white';
+  const mutedText = 'text-gray-600 dark:text-gray-400';
 
-  const textClass = theme === 'light' ? 'text-gray-900' : 'text-white';
-  const mutedText = theme === 'light' ? 'text-gray-600' : 'text-slate-400';
+  // === БАЗОВЫЕ КАРТОЧКИ/БОКСЫ ===
   const card =
-    theme === 'light'
-      ? 'bg-white border-gray-200 shadow-sm'
-      : 'bg-slate-800 border-slate-700 shadow-lg';
+    'rounded-xl bg-black/5 dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10';
 
+  // === ССЫЛКИ/КНОПКИ В САЙДБАРЕ (нейтральные, без резких цветов) ===
   const navBase =
-    'group flex items-center justify-between w-full rounded-xl border p-3 transition-all';
-  const navLight = 'hover:bg-gray-50 border-transparent';
-  const navDark = 'hover:bg-slate-700 border-transparent';
+    'group flex items-center justify-between w-full rounded-xl border border-transparent p-3 transition-all';
+  const navIdle =
+    'hover:bg-black/5 dark:hover:bg-white/10';
+  const navActive =
+    'bg-black/10 dark:bg-white/10';
 
   const menu: Array<{
     key: AdminSection;
@@ -68,7 +67,6 @@ export default function AdminDashboard() {
     { key: 'dashboard', title: 'Обзор', desc: 'Статистика', icon: <Activity className="h-5 w-5" /> },
     { key: 'users', title: 'Пользователи', desc: 'Аккаунты', icon: <Users className="h-5 w-5" /> },
     { key: 'manga', title: 'Манга', desc: 'Управление контентом', icon: <BookOpen className="h-5 w-5" /> },
-    // новый пункт меню — Приёмка глав
     { key: 'reviews', title: 'Приёмка глав', desc: 'Одобрение/отклонение', icon: <FileCheck2 className="h-5 w-5" /> },
     { key: 'edits', title: 'Правки', desc: 'Заявки на правки', icon: <ClipboardList className="h-5 w-5" /> },
     { key: 'comments', title: 'Комментарии', desc: 'Модерация', icon: <MessageSquare className="h-5 w-5" /> },
@@ -83,7 +81,7 @@ export default function AdminDashboard() {
         return <UserManagement />;
       case 'manga':
         return <MangaManagement />;
-      case 'reviews': // ← новая секция
+      case 'reviews':
         return <ChapterReviewPanel />;
       case 'edits':
         return <TitleSuggestionsPanel />;
@@ -99,6 +97,7 @@ export default function AdminDashboard() {
   const Sidebar = (
     <aside className="space-y-3">
       <div className={`text-xl font-semibold ${textClass}`}>Админ панель</div>
+
       <nav className="space-y-2">
         {menu.map((item) => {
           const isActive = activeSection === item.key;
@@ -109,15 +108,11 @@ export default function AdminDashboard() {
                 setActiveSection(item.key);
                 setSidebarOpen(false);
               }}
-              className={`${navBase} ${theme === 'light' ? navLight : navDark} ${
-                isActive ? (theme === 'light' ? 'bg-gray-100' : 'bg-slate-700') : ''
-              }`}
+              className={`${navBase} ${navIdle} ${isActive ? navActive : ''}`}
             >
               <div className="flex items-center gap-3">
                 <span
-                  className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border ${
-                    theme === 'light' ? 'border-gray-200 bg-white' : 'border-white/10 bg-slate-800/50'
-                  }`}
+                  className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border ${theme === 'light' ? 'border-black/10 bg-white' : 'border-white/10 bg-white/5'}`}
                 >
                   {item.icon}
                 </span>
@@ -127,16 +122,14 @@ export default function AdminDashboard() {
                 </div>
               </div>
               <ChevronRight
-                className={`h-4 w-4 transition-transform ${
-                  isActive ? 'translate-x-0 opacity-100' : 'translate-x-1 opacity-50 group-hover:opacity-100'
-                }`}
+                className={`h-4 w-4 transition-transform ${isActive ? 'translate-x-0 opacity-100' : 'translate-x-1 opacity-60 group-hover:opacity-100'}`}
               />
             </button>
           );
         })}
       </nav>
 
-      <div className={`rounded-xl border p-3 ${card}`}>
+      <div className={`${card} p-3`}>
         <div className="flex items-center gap-2">
           <Shield className="h-4 w-4" />
           <div className="text-sm font-medium">Системная информация</div>
@@ -154,18 +147,30 @@ export default function AdminDashboard() {
         onSidebarToggle={() => setSidebarOpen((s) => !s)}
       />
 
-      <div className="mx-auto max-w-7xl px-4 py-6">
+      <div className="mx-auto max-w-[1400px] px-6 py-8">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr]">
           <div className="hidden lg:block">{Sidebar}</div>
 
           {sidebarOpen && (
             <div className="lg:hidden fixed inset-0 z-40">
-              <div className="absolute inset-0 bg-black/40" onClick={() => setSidebarOpen(false)} />
-              <div className="absolute left-0 top-0 h-full w-[80%] max-w-[320px] p-4">{Sidebar}</div>
+              {/* затемнение */}
+              <div
+                className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                onClick={() => setSidebarOpen(false)}
+              />
+              {/* выезжающая панель — стили модалки/карточки из референса */}
+              <div className={`absolute left-0 top-0 h-full w-[80%] max-w-[320px] p-4`}>
+                <div className={`${card} h-full p-4 overflow-y-auto`}>
+                  {Sidebar}
+                </div>
+              </div>
             </div>
           )}
 
-          <main className="min-h-[60vh]">{renderContent()}</main>
+          {/* Контент: без логических изменений */}
+          <main className={`min-h-[60vh] ${card} p-4`}>
+            {renderContent()}
+          </main>
         </div>
       </div>
     </div>

@@ -73,7 +73,7 @@ async function fetchJson<T = any>(url: string, init?: RequestInit): Promise<T> {
 
 function makeTargetUrl(src: UIComment["source"], id: string | null) {
   if (!id) return null;
-  if (src === "manga") return `/manga/${id}`;
+  if (src === "manga") return `/title/${id}`;
   if (src === "page")  return `/page/${id}`;
   return `/post/${id}`;
 }
@@ -125,16 +125,13 @@ export default function CommentModeration() {
   const [nextOffset, setNextOffset] = useState(0);
   const hasMore = items.length < total;
 
-  // стили
-  const textClass  = theme === "light" ? "text-gray-900" : "text-white";
-  const mutedText  = theme === "light" ? "text-gray-600" : "text-gray-400";
-  const cardBg     = theme === "light" ? "bg-white border-gray-200 shadow-sm" : "bg-gray-900/40 border-white/10";
-  const inputClass = theme === "light"
-    ? "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-    : "w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-400";
-  const btnSecondary = theme === "light"
-    ? "border-gray-300 bg-white hover:bg-gray-100 text-gray-900"
-    : "border-white/10 bg-gray-800/60 hover:bg-gray-700 text-white";
+  const textClass  = 'text-black dark:text-white';
+  const mutedText  = 'text-gray-600 dark:text-gray-400';
+  const cardBg     = 'rounded-xl border bg-black/5 dark:bg-[#1a1a1a] border-black/10 dark:border-white/10';
+  const inputBase  = 'w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2';
+  const inputClass = ` ${inputBase} border-black/10 dark:border-white/10 bg-white dark:bg-[#0f1115] text-black dark:text-white
+                      placeholder-gray-500 dark:placeholder-gray-400 focus:ring-indigo-500/50 dark:focus:ring-indigo-400/40`;
+  const btnNeutral = 'inline-flex items-center gap-2 rounded-lg border border-black/10 dark:border-white/10 bg-black/10 hover:bg-black/15 dark:bg-white/10 dark:hover:bg-white/15 transition-colors';
 
   // загрузка бан-листа один раз
   useEffect(() => {
@@ -254,14 +251,14 @@ export default function CommentModeration() {
 
       <div className="grid grid-cols-2 md:grid-cols-2 gap-4">
         {[{ label: "Всего", value: total }, { label: "Требуют внимания", value: flaggedCount }].map((s) => (
-          <div key={s.label} className={`p-4 rounded-xl border ${cardBg}`}>
-            <div className="text-2xl font-bold">{s.value}</div>
+          <div key={s.label} className={`p-4 ${cardBg}`}>
+            <div className={`text-2xl font-bold ${textClass}`}>{s.value}</div>
             <div className={`text-sm ${mutedText}`}>{s.label}</div>
           </div>
         ))}
       </div>
 
-      <div className={`p-4 rounded-xl border ${cardBg}`}>
+      <div className={`p-4 ${cardBg}`}>
         <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center">
           <div className="flex-1 relative">
             <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${mutedText}`} />
@@ -280,11 +277,7 @@ export default function CommentModeration() {
                 setSource(e.target.value as any);
                 setNextOffset(0);
               }}
-              className={
-                theme === "light"
-                  ? "rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-                  : "rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
-              }
+              className={`rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#0f1115] border border-black/10 dark:border-white/10 ${textClass}`}
             >
               <option value="all">Все</option>
               <option value="manga">Тайтлы</option>
@@ -305,7 +298,7 @@ export default function CommentModeration() {
             </label>
             <button
               onClick={() => loadPage(true)}
-              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${btnSecondary}`}
+              className={`${btnNeutral} px-3 py-2 text-sm ${textClass}`}
               title="Обновить"
             >
               <RefreshCw className="h-4 w-4" />
@@ -330,7 +323,7 @@ export default function CommentModeration() {
 
       <div className="grid gap-4">
         {filtered.length === 0 && !loading && (
-          <div className={`rounded-xl border p-8 text-center ${cardBg}`}>
+          <div className={`p-8 text-center ${cardBg}`}>
             <MessageSquare className="mx-auto h-12 w-12 mb-2 opacity-50" />
             <p className={`${mutedText}`}>Нет комментариев по текущим фильтрам</p>
           </div>
@@ -342,18 +335,18 @@ export default function CommentModeration() {
           const violations = (c.reports > 0 ? 1 : 0) + (c.hidden ? 1 : 0);
 
           return (
-            <div key={`${c.created_at}-${c.id}`} className={`rounded-xl border p-4 ${cardBg}`}>
+            <div key={`${c.created_at}-${c.id}`} className={`p-4 ${cardBg}`}>
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     {violations > 0 && (
-                      <span className="inline-flex items-center gap-1 text-xs rounded-full border border-red-400 px-2 py-0.5 text-red-600 dark:text-red-300">
+                      <span className="inline-flex items-center gap-1 text-xs rounded-full border border-red-400/60 px-2 py-0.5 text-red-700 dark:text-red-300">
                         <ShieldAlert className="h-3 w-3" />
                         {c.hidden ? "Скрыт" : "Подозрительный"}
                       </span>
                     )}
                     {c.reports > 0 && (
-                      <span className="text-xs rounded-full border border-yellow-400 px-2 py-0.5 text-yellow-700 dark:text-yellow-300">
+                      <span className="text-xs rounded-full border border-yellow-400/60 px-2 py-0.5 text-yellow-700 dark:text-yellow-300">
                         Жалоб: {c.reports}
                       </span>
                     )}
@@ -413,7 +406,7 @@ export default function CommentModeration() {
                     <button
                       onClick={() => actApprove(c.id, c.source)}
                       disabled={busyId === c.id}
-                      className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-white/10 disabled:opacity-50"
+                      className={`${btnNeutral} px-2 py-1 text-xs ${textClass} disabled:opacity-50`}
                       title="Одобрить (сбросить жалобы и раскрыть)"
                     >
                       {busyId === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
@@ -424,7 +417,7 @@ export default function CommentModeration() {
                   <button
                     onClick={() => actDelete(c.id, c.source)}
                     disabled={busyId === c.id}
-                    className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-white/10 disabled:opacity-50 text-red-500"
+                    className={`${btnNeutral} px-2 py-1 text-xs text-red-600 dark:text-red-400 disabled:opacity-50`}
                     title="Удалить"
                   >
                     {busyId === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -445,7 +438,7 @@ export default function CommentModeration() {
 
         {hasMore && (
           <div className="flex justify-center">
-            <button onClick={() => loadPage(false)} className={`rounded-lg border px-4 py-2 ${btnSecondary}`}>
+            <button onClick={() => loadPage(false)} className={`${btnNeutral} px-4 py-2 ${textClass}`}>
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Загрузить ещё"}
             </button>
           </div>

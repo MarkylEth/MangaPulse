@@ -1,7 +1,6 @@
 // lib/db.ts
 import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from 'pg';
 
-
 declare global {
   // чтобы HMR в dev не плодил пулы
   // eslint-disable-next-line no-var
@@ -19,8 +18,6 @@ const pool =
   global.__mp_pg_pool__ ||
   new Pool({
     connectionString,
-    // Neon почти всегда с SSL; если в строке есть sslmode=require — true,
-    // иначе разрешаем самоподписанный
     ssl: /sslmode=require/i.test(connectionString) ? true : { rejectUnauthorized: false },
     max: 10,
     idleTimeoutMillis: 30_000,
@@ -81,6 +78,57 @@ export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>)
   }
 }
 
+// ====== Новые функции для RLS ======
+
+/**
+ * Query с контекстом пользователя (для RLS)
+ * Устанавливает app.current_user_id для политик безопасности
+ */
+export async function queryAsUser<T extends QueryResultRow = any>(
+  text: string,
+  params: any[],
+  userId: string
+): Promise<QueryResult<T>> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Экранируем userId через параметр для безопасности
+    await client.query(`SELECT set_config('app.current_user_id', $1, true)`, [userId]);
+    const result = await client.query<T>(text, params);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Database query error (with user context):', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Транзакция с контекстом пользователя
+ */
+export async function withTransactionAsUser<T>(
+  userId: string,
+  fn: (client: PoolClient) => Promise<T>
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`SELECT set_config('app.current_user_id', $1, true)`, [userId]);
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Transaction error (with user context):', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 /* =========================================================================
  * many / one — универсальные нормализаторы результата.
  * Работают с:
@@ -127,5 +175,29 @@ export async function one<T extends QueryResultRow = QueryResultRow>(
   params?: any[]
 ): Promise<T | null> {
   const rows = await many<T>(input as any, params);
+  return rows.length ? (rows[0] as T) : null;
+}
+
+/**
+ * many с контекстом пользователя
+ */
+export async function manyAsUser<T extends QueryResultRow = QueryResultRow>(
+  input: string,
+  params: any[],
+  userId: string
+): Promise<T[]> {
+  const res = await queryAsUser<T>(input, params, userId);
+  return res.rows as T[];
+}
+
+/**
+ * one с контекстом пользователя
+ */
+export async function oneAsUser<T extends QueryResultRow = QueryResultRow>(
+  input: string,
+  params: any[],
+  userId: string
+): Promise<T | null> {
+  const rows = await manyAsUser<T>(input, params, userId);
   return rows.length ? (rows[0] as T) : null;
 }

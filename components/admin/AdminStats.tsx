@@ -35,7 +35,7 @@ function mergeStats(base: StatsData, incoming: unknown): StatsData {
   if (!isRecord(incoming)) return base;
   const next: StatsData = { ...base };
   (Object.keys(base) as (keyof StatsData)[]).forEach((k) => {
-    const val = incoming[k];
+    const val = (incoming as any)[k];
     if (typeof val === 'number' && Number.isFinite(val)) {
       next[k] = val;
     }
@@ -48,9 +48,10 @@ export function AdminStats() {
   const [stats, setStats] = useState<StatsData>(DEFAULT_STATS);
   const [loading, setLoading] = useState(true);
 
-  const textClass = theme === 'light' ? 'text-gray-900' : 'text-white';
-  const mutedTextClass = theme === 'light' ? 'text-gray-600' : 'text-slate-400';
-  const cardClass = theme === 'light' ? 'bg-white border-gray-200 shadow-sm' : 'bg-slate-800 border-slate-700 shadow-lg';
+  const textClass = 'text-black dark:text-white';
+  const mutedTextClass = 'text-gray-600 dark:text-gray-400';
+  const cardClass =
+    'rounded-xl bg-black/5 dark:bg-[#1a1a1a] border border-black/10 dark:border-white/10';
 
   useEffect(() => {
     let cancelled = false;
@@ -64,14 +65,12 @@ export function AdminStats() {
           headers: { Accept: 'application/json' },
         });
 
-        // читаем текст -> пытаемся распарсить JSON, без падения
         const text = await res.text();
         let json: any = null;
         try { json = text ? JSON.parse(text) : null; } catch {}
 
-        // если ok + есть json.data — аккуратно мёрджим, иначе оставляем дефолты
         if (res.ok && json && (json.ok === undefined || json.ok === true)) {
-          const merged = mergeStats(DEFAULT_STATS, json.data ?? json); // поддержка обоих форматов
+          const merged = mergeStats(DEFAULT_STATS, json.data ?? json);
           if (!cancelled) setStats(merged);
         } else {
           if (!cancelled) setStats(DEFAULT_STATS);
@@ -84,61 +83,53 @@ export function AdminStats() {
       }
     })();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
-  const s = stats ?? DEFAULT_STATS; // страховка, даже если кто-то случайно прислал undefined
+  const s = stats ?? DEFAULT_STATS;
 
   const statCards = [
     {
       title: 'Всего пользователей',
       value: s.totalUsers,
       icon: Users,
-      color: 'from-blue-500 to-blue-600',
       change: `+${s.recentUsers} за неделю`,
-      changeColor: 'text-green-500',
+      changeColor: 'text-green-600 dark:text-green-400',
     },
     {
       title: 'Манга в каталоге',
       value: s.totalManga,
       icon: BookOpen,
-      color: 'from-purple-500 to-purple-600',
       change: `${s.pendingManga} на модерации`,
-      changeColor: 'text-orange-500',
+      changeColor: 'text-orange-600 dark:text-orange-400',
     },
     {
       title: 'Всего глав',
       value: s.totalChapters,
       icon: Award,
-      color: 'from-green-500 to-green-600',
       change: 'Активный контент',
-      changeColor: 'text-green-500',
+      changeColor: 'text-green-600 dark:text-green-400',
     },
     {
       title: 'Комментариев',
       value: s.totalComments,
       icon: MessageSquare,
-      color: 'from-orange-500 to-orange-600',
       change: 'Вовлеченность',
-      changeColor: 'text-blue-500',
+      changeColor: 'text-blue-600 dark:text-blue-400',
     },
     {
       title: 'Просмотров сегодня',
       value: s.todayViews,
       icon: Eye,
-      color: 'from-indigo-500 to-indigo-600',
       change: `${s.totalViews} всего`,
-      changeColor: 'text-indigo-500',
+      changeColor: 'text-indigo-600 dark:text-indigo-400',
     },
     {
       title: 'Активность',
       value: '94%',
       icon: Activity,
-      color: 'from-pink-500 to-pink-600',
       change: 'Система работает',
-      changeColor: 'text-green-500',
+      changeColor: 'text-green-600 dark:text-green-400',
     },
   ] as const;
 
@@ -146,7 +137,7 @@ export function AdminStats() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="flex items-center gap-3">
-          <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
           <span className={mutedTextClass}>Загрузка статистики...</span>
         </div>
       </div>
@@ -160,6 +151,7 @@ export function AdminStats() {
         <p className={mutedTextClass}>Статистика и аналитика платформы MangaPulse</p>
       </div>
 
+      {/* карточки со статистикой */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {statCards.map((stat, index) => {
           const Icon = stat.icon;
@@ -168,13 +160,13 @@ export function AdminStats() {
               key={stat.title}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
-              className={`p-6 rounded-2xl border ${cardClass}`}
+              transition={{ delay: index * 0.06 }}
+              className={`${cardClass} p-6`}
             >
               <div className="flex items-start justify-between mb-4">
-                {/* ВАЖНО: здесь была ошибка интерполяции классов */}
-                <div className={`p-3 rounded-xl bg-gradient-to-r ${stat.color}`}>
-                  <Icon className="w-6 h-6 text-white" />
+                {/* нейтральный фон для иконки, как на референсе */}
+                <div className="p-3 rounded-xl border border-black/10 dark:border-white/10 bg-black/10 dark:bg-white/10">
+                  <Icon className="w-6 h-6 text-black dark:text-white" />
                 </div>
                 <div className={`text-2xl font-bold ${textClass}`}>
                   {typeof stat.value === 'number' ? stat.value.toLocaleString('ru-RU') : stat.value}
@@ -189,7 +181,8 @@ export function AdminStats() {
         })}
       </div>
 
-      <div className={`p-6 rounded-2xl border ${cardClass}`}>
+      {/* последняя активность */}
+      <div className={`${cardClass} p-6`}>
         <div className="flex items-center gap-3 mb-6">
           <Activity className={`w-6 h-6 ${textClass}`} />
           <h2 className={`text-xl font-bold ${textClass}`}>Последняя активность</h2>

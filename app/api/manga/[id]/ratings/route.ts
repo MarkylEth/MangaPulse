@@ -1,7 +1,9 @@
 // app/api/manga/[id]/ratings/route.ts
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { SESSION_COOKIE, verifySession } from '@/lib/auth/session';
+import { verifySession } from '@/lib/auth/session';
+import { SESSION_COOKIE } from '@/lib/auth/config';
+
 
 /* ========= runtime / cache ========= */
 export const runtime = 'nodejs';

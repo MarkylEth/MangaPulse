@@ -3,9 +3,38 @@
 import React from 'react';
 import { Heart } from 'lucide-react';
 
-type Props = { chapterId: number; className?: string };
+type Props = {
+  chapterId: number;
+  className?: string;
+  initialLikes?: number | null;
+  initialLiked?: boolean | null;
+};
 
-export default function ChapterLikeButton({ chapterId, className = '' }: Props) {
+// лёгкий доступ к кэшу из окна
+type ChapterCache = {
+  likes?: number;
+  likedByMe?: boolean;
+};
+declare global {
+  interface Window { __mpReaderCache?: { [chapterId: number]: ChapterCache & Record<string, any> }; }
+}
+function readCache(chapterId: number): ChapterCache {
+  if (typeof window === 'undefined') return {};
+  return (window.__mpReaderCache?.[chapterId] ?? {}) as ChapterCache;
+}
+function writeCache(chapterId: number, patch: Partial<ChapterCache>) {
+  if (typeof window === 'undefined') return;
+  const storeKey = `mp:chapter:${chapterId}`;
+  const cur = readCache(chapterId);
+  const next = { ...cur, ...patch };
+  (window.__mpReaderCache ||= {})[chapterId] = next;
+  try {
+    const prev = JSON.parse(sessionStorage.getItem(storeKey) || '{}');
+    sessionStorage.setItem(storeKey, JSON.stringify({ ...prev, ...next, fetchedAt: prev?.fetchedAt ?? Date.now() }));
+  } catch {}
+}
+
+export default function ChapterLikeButton({ chapterId, className = '', initialLikes = null, initialLiked = null }: Props) {
   const [likes, setLikes] = React.useState<number | null>(null);
   const [liked, setLiked] = React.useState<boolean>(false);
   const [me, setMe] = React.useState<string | null>(null);
@@ -24,8 +53,25 @@ export default function ChapterLikeButton({ chapterId, className = '' }: Props) 
     })();
   }, []);
 
-  // грузим метрики (без слова like в URL)
+  // гидрация из окна/props; сеть только если совсем нет данных
   React.useEffect(() => {
+    const cache = readCache(chapterId);
+    const fromProps = {
+      likes: initialLikes ?? null,
+      likedByMe: typeof initialLiked === 'boolean' ? initialLiked : null
+    };
+
+    if (typeof cache.likes === 'number') setLikes(cache.likes);
+    if (typeof cache.likedByMe === 'boolean') setLiked(cache.likedByMe);
+
+    if (fromProps.likes != null && likes == null) setLikes(fromProps.likes);
+    if (fromProps.likedByMe != null && typeof cache.likedByMe !== 'boolean') setLiked(fromProps.likedByMe!);
+
+    // если уже что-то знаем — не трогаем сеть
+    const hasAny = typeof cache.likes === 'number' || fromProps.likes != null;
+    if (hasAny) return;
+
+    // мягкая подгрузка метрик (без слова like в пути)
     const ac = new AbortController();
     (async () => {
       try {
@@ -33,14 +79,16 @@ export default function ChapterLikeButton({ chapterId, className = '' }: Props) 
         const r = await fetch(`/api/chapters/${chapterId}/metrics${q}`, { cache: 'no-store', signal: ac.signal });
         const j = await r.json().catch(() => ({}));
         if (!ac.signal.aborted) {
-          setLikes(Number(j?.likes ?? 0));
-          setLiked(Boolean(j?.likedByMe));
+          const newLikes = Number(j?.likes ?? 0);
+          const newLiked = Boolean(j?.likedByMe);
+          setLikes(newLikes);
+          setLiked(newLiked);
+          writeCache(chapterId, { likes: newLikes, likedByMe: newLiked });
         }
-      } catch {
-        if (!ac.signal.aborted) { setLikes(0); setLiked(false); }
-      }
+      } catch {}
     })();
     return () => ac.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chapterId, me]);
 
   async function doToggle() {
@@ -57,8 +105,16 @@ export default function ChapterLikeButton({ chapterId, className = '' }: Props) 
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j?.ok) throw new Error(j?.error || 'fail');
-      setLikes(Number(j?.likes ?? 0));
-      setLiked(Boolean(j?.likedByMe));
+
+      // приоритетно берём новые метрики с сервера, если вернул
+      const newLikes = typeof j?.likes === 'number'
+        ? Number(j.likes)
+        : Math.max(0, (likes ?? 0) + (liked ? -1 : 1));
+      const newLiked = typeof j?.likedByMe === 'boolean' ? Boolean(j.likedByMe) : !liked;
+
+      setLikes(newLikes);
+      setLiked(newLiked);
+      writeCache(chapterId, { likes: newLikes, likedByMe: newLiked });
     } catch (e: any) {
       setHint(e?.message || 'Ошибка'); setTimeout(() => setHint(null), 1500);
     } finally { setBusy(false); }

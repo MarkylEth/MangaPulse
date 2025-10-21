@@ -1,13 +1,16 @@
+// components/comments/ReportForm.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Flag, X } from 'lucide-react';
+import { Select, type SelectOption } from '@/components/ui/Select';
 
 type ReportReason =
   | 'abuse' | 'harassment' | 'spam' | 'hate' | 'porn'
   | 'illegal_trade' | 'spoiler' | 'offtopic' | 'other';
 
-const REASONS: { value: ReportReason; label: string }[] = [
+const REASONS: SelectOption<ReportReason>[] = [
   { value: 'abuse',         label: 'Оскорбления' },
   { value: 'harassment',    label: 'Травля/домогательства' },
   { value: 'spam',          label: 'Спам/реклама' },
@@ -19,22 +22,42 @@ const REASONS: { value: ReportReason; label: string }[] = [
   { value: 'other',         label: 'Другое' },
 ];
 
-export default function ReportForm({
-  mangaId,
-  commentId,
-  onDone,
-}: { mangaId: number; commentId: string; onDone?: (hidden: boolean) => void }) {
+const NOTE_MAX = 500;
+
+type BaseProps = {
+  mangaId: number;
+  commentId: string;
+  onDone?: (hidden: boolean) => void;
+  children?: React.ReactElement<any>;
+};
+
+/** Публичный компонент-обёртка БЕЗ хуков: решает, показывать ли форму гостю */
+export default function ReportForm(props: BaseProps & { loggedIn?: boolean }) {
+  const { loggedIn = false } = props;
+  if (!loggedIn) return null;
+  return <ReportFormInner {...props} />;
+}
+
+/** Внутренний компонент С хуками — вызывается только для залогиненных */
+function ReportFormInner({ mangaId, commentId, onDone, children }: BaseProps) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState<ReportReason>('abuse');
   const [note, setNote] = useState('');
   const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [mounted, setMounted] = useState(false);
 
-  // Закрытие по ESC + блокировка скролла при открытии
+  // Флаг "монтировано" — чтобы порталы не ломали SSR/гидратацию
+  useEffect(() => setMounted(true), []);
+
+  // Блокировка скролла + ESC, только когда модалка открыта
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
     window.addEventListener('keydown', onKey);
     return () => {
       document.body.style.overflow = prev;
@@ -56,7 +79,6 @@ export default function ReportForm({
       if (r.status === 401) {
         setState('idle');
         setOpen(false);
-        alert('Нужно войти, чтобы отправлять жалобы.');
         return;
       }
 
@@ -66,91 +88,164 @@ export default function ReportForm({
       setState('sent');
       setOpen(false);
       onDone?.(!!j?.is_hidden);
-    } catch (e: any) {
+    } catch (e) {
       setState('error');
-      alert(e?.message || 'Не удалось отправить жалобу');
+      console.error('report failed', e);
     }
   }
 
-  return (
-    <>
+  // Триггер (флажок) или кастомная кнопка
+  let trigger: React.ReactNode;
+  if (children && React.isValidElement(children)) {
+    const ch = children as React.ReactElement<any>;
+    const prevOnClick = (ch.props as any)?.onClick;
+    trigger = React.cloneElement(ch, {
+      ...(ch.props as any),
+      onClick: (e: any) => {
+        if (typeof prevOnClick === 'function') prevOnClick(e);
+        setOpen(true);
+      },
+      disabled: state === 'sending' || (ch.props as any)?.disabled,
+      title: undefined,
+      'aria-label': (ch.props as any)?.['aria-label'] ?? 'Жалоба',
+    } as any);
+  } else {
+    trigger = (
       <button
         type="button"
-        className="text-xs opacity-70 hover:opacity-100 inline-flex items-center gap-1"
+        className="
+          p-1.5 rounded-md transition-all
+          text-amber-700 bg-amber-100/80 ring-1 ring-amber-200/70 hover:bg-amber-200/80 hover:ring-amber-300
+          dark:text-yellow-400 dark:bg-yellow-500/10 dark:hover:bg-yellow-500/20 dark:ring-0
+        "
         onClick={() => setOpen(true)}
         disabled={state === 'sending'}
-        title="Пожаловаться"
+        aria-label="Жалоба"
       >
         <Flag className="w-3.5 h-3.5" />
-        {state === 'sent' ? 'Жалоба отправлена' : state === 'sending' ? 'Отправка…' : 'Пожаловаться'}
       </button>
+    );
+  }
 
-      {open && (
-        <div
-          className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-          onMouseDown={() => setOpen(false)} // клик по фону
-          role="dialog"
-          aria-modal="true"
-        >
+  const remaining = Math.max(0, NOTE_MAX - note.length);
+
+  return (
+    <>
+      {trigger}
+
+      {open && mounted && createPortal(
+        (
           <div
-            className="w-full max-w-sm"
-            onMouseDown={(e) => e.stopPropagation()} // не закрывать при клике внутри
+            className="fixed inset-0 z-[10000] isolate flex items-center justify-center p-4
+                       bg-black/60 backdrop-blur-sm"
+            onMouseDown={() => setOpen(false)}
+            role="dialog"
+            aria-modal="true"
           >
-            <div className="rounded-2xl border border-white/10 bg-white text-black shadow-xl dark:bg-zinc-900 dark:text-white">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-black/10 dark:border-white/10">
-                <h3 className="text-base font-semibold">Пожаловаться на комментарий</h3>
-                <button
-                  className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/10"
-                  onClick={() => setOpen(false)}
-                  aria-label="Закрыть"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="p-4">
-                <label className="block text-xs opacity-70 mb-1">Причина</label>
-                <select
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value as ReportReason)}
-                  className="w-full text-sm rounded border border-black/20 dark:border-white/15 bg-white dark:bg-zinc-950 px-2 py-1 mb-3"
-                >
-                  {REASONS.map((r) => (
-                    <option key={r.value} value={r.value}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
-
-                <label className="block text-xs opacity-70 mb-1">Комментарий (необязательно)</label>
-                <textarea
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  rows={4}
-                  maxLength={1000}
-                  placeholder="Опишите подробности…"
-                  className="w-full text-sm rounded border border-black/20 dark:border-white/15 bg-white dark:bg-zinc-950 px-2 py-1"
-                />
-
-                <div className="mt-3 flex items-center justify-end gap-2">
+            <div
+              className="w-full max-w-xl sm:max-w-xl"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div
+                className="
+                  relative overflow-visible
+                  rounded-2xl border border-black/10 dark:border-white/10
+                  bg-white/90 dark:bg-[#0f1115]/90 backdrop-blur-xl
+                  shadow-2xl
+                  text-gray-900 dark:text-gray-100
+                "
+              >
+                {/* Хедер */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-black/10 dark:border-white/10">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-yellow-100/80 dark:bg-yellow-500/15">
+                      <Flag className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
+                    </div>
+                    <h3 className="text-base font-semibold">Пожаловаться на комментарий</h3>
+                  </div>
                   <button
-                    className="text-sm px-3 py-1 rounded border border-black/20 dark:border-white/15 hover:bg-black/5 dark:hover:bg-white/10"
+                    className="p-1 rounded-xl hover:bg-black/5 dark:hover:bg-white/10"
                     onClick={() => setOpen(false)}
+                    aria-label="Закрыть"
                   >
-                    Отмена
+                    <X className="w-4 h-4" />
                   </button>
-                  <button
-                    className="text-sm px-3 py-1 rounded bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-400"
-                    onClick={submit}
-                    disabled={state === 'sending'}
-                  >
-                    Отправить
-                  </button>
+                </div>
+
+                {/* Контент */}
+                <div className="p-4 space-y-3 pb-5">
+                  <label className="block text-xs text-gray-600 dark:text-gray-400">Причина</label>
+
+                  <Select<ReportReason>
+                    value={reason}
+                    onChange={setReason}
+                    options={REASONS}
+                    className="h-10 text-gray-900 dark:text-gray-100"
+                    contentClassName="
+                      z-[11000]
+                      left-[-16px] right-[-16px]
+                      rounded-2xl border border-black/10 dark:border-white/10
+                      shadow-2xl bg-white dark:bg-[#0f1115]
+                    "
+                  />
+
+                  <label className="block text-xs text-gray-600 dark:text-gray-400">Комментарий (необязательно)</label>
+                  <div>
+                    <textarea
+                      value={note}
+                      onChange={(e) => setNote(e.target.value.slice(0, NOTE_MAX))}
+                      rows={4}
+                      maxLength={NOTE_MAX}
+                      placeholder="Опишите подробности…"
+                      className="
+                        w-full text-sm rounded-xl
+                        border border-black/10 dark:border-white/15
+                        bg-white/90 dark:bg-black/30
+                        text-gray-900 dark:text-gray-100
+                        placeholder:text-gray-400 dark:placeholder:text-gray-500
+                        caret-gray-900 dark:caret-gray-200
+                        px-3 py-2
+                        outline-none focus:ring-2 ring-indigo-500/40
+                        resize-none
+                      "
+                    />
+                    <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400 text-right">
+                      {remaining} / {NOTE_MAX}
+                    </div>
+                  </div>
+
+                  {/* CTA */}
+                  <div className="pt-2 flex items-center justify-end gap-2">
+                    <button
+                      className="
+                        text-sm px-4 py-2 rounded-xl
+                        border border-black/10 dark:border-white/10
+                        bg-black/5 hover:bg-black/10
+                        dark:bg-white/5 dark:hover:bg-white/10
+                        transition-all
+                      "
+                      onClick={() => setOpen(false)}
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      className="
+                        text-sm px-4 py-2 rounded-xl
+                        bg-indigo-600 hover:bg-indigo-500
+                        text-white transition-all disabled:opacity-60
+                      "
+                      onClick={submit}
+                      disabled={state === 'sending'}
+                    >
+                      {state === 'sending' ? 'Отправка…' : 'Отправить'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        ),
+        document.body
       )}
     </>
   );

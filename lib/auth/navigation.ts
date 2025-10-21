@@ -1,5 +1,4 @@
 // lib/auth/navigation.ts
-// Формирование навигации без привязки к ролям. Админ‑разделы скрыты до ввода кастомного Auth.
 
 export type NavItem = { label: string; href: string; external?: boolean }
 

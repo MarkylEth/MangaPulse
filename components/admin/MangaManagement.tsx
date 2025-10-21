@@ -14,10 +14,8 @@ import {
   ExternalLink,
   Filter,
   X,
-  Trash2,
   Clock,
   Database,
-  Info,
 } from 'lucide-react';
 import { useTheme } from '@/lib/theme/context';
 
@@ -110,35 +108,22 @@ type CleanupStats = {
 
 const PLACEHOLDER = '/cover-placeholder.png';
 
-/** Приводим src к валидному виду для <Image>. */
 function safeImageSrc(src?: string | null): string {
   if (!src) return PLACEHOLDER;
   const s = String(src).trim();
   if (!s) return PLACEHOLDER;
-
-  // относительный путь из /public
   if (s.startsWith('/')) return s;
-
-  // data:/blob:
   if (/^(data:image|blob:)/i.test(s)) return s;
-
-  // абсолютный URL
   try {
     const u = new URL(s);
     if (u.protocol === 'http:' || u.protocol === 'https:') {
-      // Если это внешний URL (xim.ru, wasabisys.com), используем proxy
       if (s.includes('xim.ru') || s.includes('wasabisys.com')) {
-        return `/api/image-proxy?url=${encodeURIComponent(s)}`;
+        return `/api/image-proxy?u=${encodeURIComponent(s)}`;
       }
       return u.toString();
     }
-  } catch {
-    /* ignore */
-  }
-
-  // что-то типа "uploads/file.jpg" — добавим ведущий слэш
+  } catch {}
   if (/^[a-z0-9/_\-\.]+$/i.test(s)) return '/' + s.replace(/^\/+/, '');
-
   return PLACEHOLDER;
 }
 
@@ -152,7 +137,6 @@ function keyFor(item: Item): string {
   return `${item.kind}-${idPart}`;
 }
 
-/** Унифицируем преобразование в массив строк (genres/tags). */
 function toStrList(v: any): string[] {
   if (v == null) return [];
   if (Array.isArray(v)) {
@@ -205,7 +189,6 @@ function extractTags(obj: any): string[] {
   );
 }
 
-/** Возвращаем undefined для "пустых" значений. */
 function pick<T = any>(...vals: any[]): T | undefined {
   for (const v of vals) {
     if (v !== undefined && v !== null && v !== '' && v !== '—') return v as T;
@@ -213,6 +196,7 @@ function pick<T = any>(...vals: any[]): T | undefined {
   return undefined as any;
 }
 
+/** Сборка данных для отображения (с учётом массивов authors/artists/publishers) */
 function buildViewData(it: Item) {
   const p =
     it.payload && typeof it.payload === 'object' && Object.keys(it.payload).length > 0
@@ -222,8 +206,31 @@ function buildViewData(it: Item) {
   const title = pick(it.title, p.title_ru, p.title) ?? 'Без названия';
   const title_romaji =
     pick(it.title_romaji, it.original_title, p.original_title, p.title_romaji) ?? 'Не указано';
-  const author = pick(it.author, p.author) ?? 'Не указан';
-  const artist = pick(it.artist, p.artist) ?? 'Не указан';
+
+  // ВАЖНО: тянем имена из массивов, если нет плоских строк
+  const author =
+    pick(
+      it.author,
+      p.author,
+      toStrList(p.authors).join(', '),
+      toStrList(p.author_names).join(', ')
+    ) ?? 'Не указан';
+
+  const artist =
+    pick(
+      it.artist,
+      p.artist,
+      toStrList(p.artists).join(', '),
+      toStrList(p.artist_names).join(', ')
+    ) ?? 'Не указан';
+
+  const publisher =
+    pick(
+      (it as any).publisher,
+      p.publisher,
+      toStrList(p.publishers).join(', '),
+      toStrList(p.publisher_names).join(', ')
+    ) ?? 'Не указан';
 
   const statusMap: Record<string, string> = {
     ongoing: 'Выходит',
@@ -277,6 +284,7 @@ function buildViewData(it: Item) {
     title_romaji,
     author,
     artist,
+    publisher,
     status,
     translation_status,
     age_rating,
@@ -319,25 +327,21 @@ export default function MangaManagement() {
   const [cleanupStats, setCleanupStats] = useState<CleanupStats | null>(null);
   const [cleanupError, setCleanupError] = useState<string | null>(null);
 
-  const textClass = theme === 'light' ? 'text-gray-900' : 'text-white';
-  const mutedText = theme === 'light' ? 'text-gray-600' : 'text-gray-400';
-  const cardBg =
-    theme === 'light' ? 'bg-white border-gray-200 shadow-sm' : 'bg-gray-900/40 border-white/10';
+  const textClass = 'text-black dark:text-white';
+  const mutedText = 'text-gray-600 dark:text-gray-400';
+  const cardBg = 'bg-black/5 dark:bg-[#1a1a1a]';
+  const card = `rounded-xl ${cardBg} border border-black/10 dark:border-white/10`;
   const inputClass =
-    theme === 'light'
-      ? 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
-      : 'w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-400';
+    'w-full rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-[#0f1115] text-black dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400';
   const badge = 'rounded-full border px-2 py-0.5 text-xs font-medium';
   const btnPrimary =
-    theme === 'light' ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-emerald-500 text-black hover:bg-emerald-400';
+    'bg-emerald-600 hover:bg-emerald-700 text-white dark:bg-emerald-500 dark:hover:bg-emerald-400 dark:text-black transition-colors';
   const btnDanger =
-    theme === 'light' ? 'bg-rose-600 text-white hover:bg-rose-700' : 'bg-rose-500 text-black hover:bg-rose-400';
+    'bg-rose-600 hover:bg-rose-700 text-white dark:bg-rose-500 dark:hover:bg-rose-400 dark:text-black transition-colors';
   const btnSecondary =
-    theme === 'light'
-      ? 'border-gray-300 bg-white hover:bg-gray-100 text-gray-900'
-      : 'border-white/10 bg-gray-800/60 hover:bg-gray-700 text-white';
-  const btnWarning =
-    theme === 'light' ? 'bg-orange-600 text-white hover:bg-orange-700' : 'bg-orange-500 text-black hover:bg-orange-400';
+    'rounded-lg border border-black/10 dark:border-white/10 bg-black/10 hover:bg-black/15 dark:bg-white/10 dark:hover:bg-white/15 text-black dark:text-white';
+  const btnGhost =
+    'rounded-lg px-3 py-2 hover:bg-black/10 dark:hover:bg-white/10 transition-colors';
 
   async function loadData() {
     setLoading(true);
@@ -377,55 +381,43 @@ export default function MangaManagement() {
   async function loadCleanupStats() {
     try {
       setCleanupError(null);
-      console.log(`Loading cleanup stats...`);
-      
       const res = await fetch(`/api/admin/manga-moderation/cleanup?olderThanDays=15`, {
-        headers: { 
+        headers: {
           'x-admin': '1',
           'Content-Type': 'application/json'
         },
       });
 
-      console.log(`Cleanup stats response status: ${res.status}`);
-      
       if (!res.ok) {
         const errorMsg = `HTTP ${res.status}: Failed to load cleanup stats`;
-        console.error(errorMsg);
         setCleanupError(errorMsg);
         return;
       }
 
       const responseText = await res.text();
-      console.log('Cleanup stats response:', responseText);
-      
       if (!responseText) {
         const errorMsg = 'Empty response from cleanup stats API';
-        console.error(errorMsg);
         setCleanupError(errorMsg);
         return;
       }
-      
+
       let json: any = {};
       try {
         json = JSON.parse(responseText);
-      } catch (parseError) {
+      } catch {
         const errorMsg = 'Invalid JSON response from cleanup stats API';
-        console.error(errorMsg, parseError);
         setCleanupError(errorMsg);
         return;
       }
 
       if (json.ok) {
-        console.log('Cleanup stats loaded successfully:', json);
         setCleanupStats(json);
       } else {
         const errorMsg = json.error || json.message || 'Cleanup stats API returned error';
-        console.error(errorMsg);
         setCleanupError(errorMsg);
       }
     } catch (err: any) {
       const errorMsg = `Network error: ${err.message}`;
-      console.error('Failed to load cleanup stats:', err);
       setCleanupError(errorMsg);
     }
   }
@@ -457,7 +449,6 @@ export default function MangaManagement() {
     const k = keyFor(item);
     setBusyKey(k);
     try {
-      // оптимистично меняем статус
       setItems((prev) =>
         prev.map((x) => (keyFor(x) === k ? { ...x, submission_status: action } : x)),
       );
@@ -486,13 +477,11 @@ export default function MangaManagement() {
       setSelectedItem(null);
     } catch (err: any) {
       alert(`Ошибка: ${err.message}`);
-      await loadData(); // откат
+      await loadData();
     } finally {
       setBusyKey(null);
     }
   }
-
-
 
   function getStatusBadge(status: SubmissionStatus) {
     const variants = {
@@ -550,7 +539,7 @@ export default function MangaManagement() {
             { label: 'Одобрено', value: stats.approved },
             { label: 'Отклонено', value: stats.rejected },
           ].map((s) => (
-            <div key={s.label} className={`p-4 rounded-xl border ${cardBg}`}>
+            <div key={s.label} className={`${card} p-4`}>
               <div className="text-2xl font-bold">{s.value}</div>
               <div className={`text-sm ${mutedText}`}>{s.label}</div>
             </div>
@@ -559,27 +548,25 @@ export default function MangaManagement() {
 
         {/* Cleanup Status */}
         {cleanupError && (
-          <div className={`rounded-xl border p-4 ${
-            theme === 'light'
-              ? 'bg-red-50 border-red-200 text-red-800'
-              : 'bg-red-500/10 border-red-500/30 text-red-100'
-          }`}>
+          <div
+            className={`${card} p-4 border-red-300/60 dark:border-red-400/30 bg-red-50 dark:bg-red-500/10 text-red-800 dark:text-red-200`}
+          >
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5" />
               <span className="font-medium">Ошибка загрузки статистики очистки</span>
             </div>
             <p className="mt-1 text-sm">{cleanupError}</p>
-            <button 
-              onClick={loadCleanupStats} 
+            <button
+              onClick={loadCleanupStats}
               className="mt-2 text-sm underline hover:no-underline"
             >
               Попробовать снова
             </button>
           </div>
         )}
-        
+
         {cleanupStats && !cleanupError && (
-          <div className={`rounded-xl border p-4 ${cardBg}`}>
+          <div className={`${card} p-4`}>
             <div className="flex items-center gap-3">
               <Database className={`h-5 w-5 ${mutedText}`} />
               <div className="flex-1">
@@ -599,11 +586,11 @@ export default function MangaManagement() {
                   )}
                 </div>
               </div>
-              
+
               {cleanupStats.stats.total.total > 0 && (
                 <div className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-md ${
-                  theme === 'light' 
-                    ? 'bg-green-100 text-green-700 border border-green-200' 
+                  theme === 'light'
+                    ? 'bg-green-100 text-green-700 border border-green-200'
                     : 'bg-green-500/20 text-green-300 border border-green-500/30'
                 }`}>
                   <Clock className="h-3 w-3" />
@@ -616,7 +603,7 @@ export default function MangaManagement() {
       </div>
 
       {/* Filters */}
-      <div className={`p-4 rounded-xl border ${cardBg}`}>
+      <div className={`${card} p-4`}>
         <div className="flex flex-col md:flex-row gap-4">
           <div className="flex-1 relative">
             <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${mutedText}`} />
@@ -657,7 +644,7 @@ export default function MangaManagement() {
                 loadCleanupStats();
               }}
               disabled={loading}
-              className={`rounded-lg border px-3 py-2 text-sm transition-colors ${btnSecondary} disabled:opacity-50`}
+              className={`${btnSecondary} px-3 py-2 text-sm transition-colors disabled:opacity-50`}
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             </button>
@@ -675,11 +662,7 @@ export default function MangaManagement() {
 
       {error && (
         <div
-          className={`rounded-xl border p-4 ${
-            theme === 'light'
-              ? 'bg-red-50 border-red-200 text-red-800'
-              : 'bg-red-500/10 border-red-500/30 text-red-100'
-          }`}
+          className={`${card} p-4 border-red-300/60 dark:border-red-400/30 bg-red-50 dark:bg-red-500/10 text-red-800 dark:text-red-200`}
         >
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5" />
@@ -696,7 +679,7 @@ export default function MangaManagement() {
       {!loading && !error && (
         <>
           {filteredItems.length === 0 ? (
-            <div className={`rounded-xl border p-8 text-center ${cardBg}`}>
+            <div className={`${card} p-8 text-center`}>
               <div className={`${mutedText} mb-4`}>
                 <BookOpen className="mx-auto h-12 w-12 mb-2 opacity-50" />
                 <p>Ничего не найдено</p>
@@ -710,9 +693,9 @@ export default function MangaManagement() {
                 const v = buildViewData(item);
 
                 return (
-                  <div key={k} className={`rounded-xl border p-4 transition-all hover:shadow-md ${cardBg}`}>
+                  <div key={k} className={`${card} p-4 transition-all hover:shadow-md`}>
                     <div className="flex gap-3">
-                      <div className="relative h-[120px] w-[90px] overflow-hidden rounded-md border flex-shrink-0">
+                      <div className="relative h-[120px] w-[90px] overflow-hidden rounded-md border border-black/10 dark:border-white/10 flex-shrink-0">
                         <Image
                           src={v.cover}
                           alt={v.title}
@@ -776,7 +759,7 @@ export default function MangaManagement() {
 
                           <button
                             onClick={() => setSelectedItem(item)}
-                            className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${btnSecondary}`}
+                            className={`${btnSecondary} px-3 py-1.5 text-sm transition-colors`}
                           >
                             Подробнее
                           </button>
@@ -786,7 +769,7 @@ export default function MangaManagement() {
                               href={`/title/${item.slug ?? item.id ?? ''}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className={`inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm transition-colors ${btnSecondary}`}
+                              className={`${btnSecondary} inline-flex items-center gap-1 px-3 py-1.5 text-sm transition-colors`}
                             >
                               <ExternalLink className="h-4 w-4" />
                               Открыть
@@ -806,8 +789,13 @@ export default function MangaManagement() {
       {/* Item Detail Modal */}
       {selectedItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setSelectedItem(null)} />
-          <div className={`relative z-10 w-full max-w-4xl max-h-[90vh] overflow-auto rounded-2xl border p-6 ${cardBg}`}>
+          {/* фон модалки: полупрозрачный + blur */}
+          <div
+            className="absolute inset-0 bg-black/30 dark:bg-black/60 backdrop-blur-sm md:backdrop-blur"
+            onClick={() => setSelectedItem(null)}
+          />
+          {/* тело модалки в стиле референса */}
+          <div className="relative z-10 w-full max-w-4xl max-h-[90vh] overflow-auto rounded-2xl p-6 border border-black/10 dark:border-white/10 shadow-[0_20px_80px_rgba(0,0,0,.6)] bg-white/80 dark:bg-[#0f1115]/80 backdrop-blur-xl">
             {(() => {
               const v = buildViewData(selectedItem);
               return (
@@ -821,20 +809,21 @@ export default function MangaManagement() {
                     </div>
                     <button
                       onClick={() => setSelectedItem(null)}
-                      className={`rounded-lg p-2 ${theme === 'light' ? 'hover:bg-gray-100' : 'hover:bg-gray-800'}`}
+                      className={btnGhost}
+                      aria-label="Закрыть"
                     >
                       <X className="h-5 w-5" />
                     </button>
                   </div>
 
                   <div className="grid gap-6 md:grid-cols-[200px_1fr]">
-                    <div className="relative h-[280px] w-[200px] overflow-hidden rounded-md border">
-                      <Image 
-                        src={v.cover} 
-                        alt="cover" 
-                        fill 
-                        sizes="200px" 
-                        className="object-cover" 
+                    <div className="relative h-[280px] w-[200px] overflow-hidden rounded-md border border-black/10 dark:border-white/10">
+                      <Image
+                        src={v.cover}
+                        alt="cover"
+                        fill
+                        sizes="200px"
+                        className="object-cover"
                         unoptimized
                       />
                     </div>
@@ -844,6 +833,7 @@ export default function MangaManagement() {
                       <div><span className="font-medium">Отправил:</span> {v.submittedBy}</div>
                       <div><span className="font-medium">Автор:</span> {v.author}</div>
                       <div><span className="font-medium">Художник:</span> {v.artist}</div>
+                      <div><span className="font-medium">Издатель:</span> {v.publisher}</div>
                       <div><span className="font-medium">Статус тайтла:</span> {v.status}</div>
                       <div><span className="font-medium">Статус перевода:</span> {v.translation_status}</div>
                       <div><span className="font-medium">Возраст:</span> {v.age_rating}</div>
@@ -860,12 +850,12 @@ export default function MangaManagement() {
                       )}
 
                       {selectedItem.payload && (
-                        <div className="pt-4 border-t">
+                        <div className="pt-4 border-t border-black/10 dark:border-white/10">
                           <details>
-                            <summary className="cursor-pointer text-xs font-medium opacity-60">
+                            <summary className="cursor-pointer text-xs font-medium opacity-70">
                               Отладка: Raw payload
                             </summary>
-                            <pre className="text-xs mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded overflow-auto">
+                            <pre className="text-xs mt-2 p-2 bg-black/5 dark:bg-white/10 rounded overflow-auto">
                               {JSON.stringify(selectedItem.payload, null, 2)}
                             </pre>
                           </details>
@@ -893,7 +883,7 @@ export default function MangaManagement() {
                     )}
                     <button
                       onClick={() => setSelectedItem(null)}
-                      className={`rounded-md border px-4 py-2 text-sm transition-colors ${btnSecondary}`}
+                      className={`${btnSecondary} px-4 py-2 text-sm transition-colors`}
                     >
                       Закрыть
                     </button>

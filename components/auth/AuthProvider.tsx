@@ -1,12 +1,13 @@
+//components\auth\AuthProvider.tsx
 'use client';
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
 export type AuthUser = {
-  id: string;
+  id: string | number;
   email?: string | null;
   name?: string | null;
-  username?: string | null;   // ← важно
+  username?: string | null;
   nickname?: string | null;
   role?: string | null;
   avatar_url?: string | null;
@@ -24,62 +25,89 @@ const Ctx = createContext<AuthCtx>({
   setUser: () => {},
 });
 
-export function AuthProvider({ children, initialUser = null }: { children: React.ReactNode; initialUser?: AuthUser | null }) {
+export function AuthProvider({
+  children,
+  initialUser = null,
+}: {
+  children: React.ReactNode;
+  initialUser?: AuthUser | null;
+}) {
   const [user, setUser] = useState<AuthUser | null>(initialUser ?? null);
 
-  // подгружаем при маунте актуального пользователя + его профиль (username)
   useEffect(() => {
-    let isMounted = true;
+    let alive = true;
 
     (async () => {
       try {
-        // 1) кто залогинен (user)
-        const r1 = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
-        const j1 = await r1.json().catch(() => ({}));
-        if (!r1.ok || !j1?.user) {
-          if (isMounted) setUser(null);
-          try { localStorage.removeItem('mp:user'); sessionStorage.removeItem('mp:user'); } catch {}
+        const r = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
+        const j = await r.json().catch(() => ({} as any));
+
+        // если эндпоинт вернул user:null — гость
+        if (!r.ok || !j?.user) {
+          if (alive) setUser(null);
+          try {
+            localStorage.removeItem('mp:user');
+            sessionStorage.removeItem('mp:user');
+          } catch {}
           return;
         }
 
-        let u: AuthUser = j1.user;
+        // базовые поля из user
+        let u: AuthUser = {
+          id: j.user.id,
+          email: j.user.email ?? null,
+          name: j.user.name ?? null,
+          username: j.user.username ?? null,
+          nickname: j.user.nickname ?? null,
+          role: j.user.role ?? null,
+          avatar_url: j.user.avatar_url ?? null,
+        };
 
-        // 2) подтягиваем профиль (username и т.п.)
-        const r2 = await fetch('/api/profile/me', { credentials: 'include', cache: 'no-store' });
-        const j2 = await r2.json().catch(() => ({}));
-        if (r2.ok && j2?.profile) {
+        // если сервер уже объединяет profile — аккуратно доклеим
+        const p = j.profile ?? null;
+        if (p) {
           u = {
             ...u,
-            username: j2.profile.username ?? u.username ?? null,
-            nickname: j2.profile.nickname ?? u.nickname ?? j2.profile.username ?? null,
-            avatar_url: j2.profile.avatar_url ?? u.avatar_url ?? null,
-            role: j2.profile.role ?? u.role ?? null,
+            username: p.username ?? u.username ?? null,
+            nickname: p.nickname ?? u.nickname ?? p.username ?? null,
+            avatar_url: p.avatar_url ?? u.avatar_url ?? null,
+            role: p.role ?? u.role ?? null,
           };
         }
 
-        if (isMounted) {
+        if (alive) {
           setUser(u);
-          try { localStorage.setItem('mp:user', JSON.stringify(u)); } catch {}
+          try {
+            localStorage.setItem('mp:user', JSON.stringify(u));
+          } catch {}
         }
       } catch {
-        if (isMounted) setUser(null);
+        if (alive) setUser(null);
       }
     })();
 
-    return () => { isMounted = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  const value = useMemo(() => ({
-    user,
-    isGuest: !user?.id,
-    setUser: (u: AuthUser | null) => {
-      setUser(u);
-      try {
-        if (u) localStorage.setItem('mp:user', JSON.stringify(u));
-        else { localStorage.removeItem('mp:user'); sessionStorage.removeItem('mp:user'); }
-      } catch {}
-    },
-  }), [user]);
+  const value = useMemo(
+    () => ({
+      user,
+      isGuest: !user?.id,
+      setUser: (u: AuthUser | null) => {
+        setUser(u);
+        try {
+          if (u) localStorage.setItem('mp:user', JSON.stringify(u));
+          else {
+            localStorage.removeItem('mp:user');
+            sessionStorage.removeItem('mp:user');
+          }
+        } catch {}
+      },
+    }),
+    [user]
+  );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

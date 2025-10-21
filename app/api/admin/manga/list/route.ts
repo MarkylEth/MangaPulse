@@ -1,11 +1,10 @@
-﻿import { ensureAdminAPI } from "@/lib/admin/api-guard";
 // app/api/admin/manga/list/route.ts
 import { NextResponse } from 'next/server'
 import { toInt } from '@/lib/utils'
 // import { many, one } from '@/lib/db'
 
 /** GET: список тайтлов с пагинацией (для админки) */
-export async function GET(req: Request) { const guard = await ensureAdminAPI(); if (guard) return guard;
+export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
     const page = Math.max(1, toInt(searchParams.get('page'), 1))
@@ -27,4 +26,3 @@ export async function GET(req: Request) { const guard = await ensureAdminAPI(); 
     return NextResponse.json({ ok: false, error: e?.message ?? 'Internal error' }, { status: 500 })
   }
 }
-

@@ -1,9 +1,8 @@
-﻿import { ensureAdminAPI } from "@/lib/admin/api-guard";
 // app/api/admin/env/route.ts
 import { NextResponse } from 'next/server'
 
 /** GET: отдать безопасный срез окружения для админки (без секретов!) */
-export async function GET() { const guard = await ensureAdminAPI(); if (guard) return guard;
+export async function GET() {
   const safe = {
     runtime: process.env.VERCEL ? 'vercel' : 'node',
     node: process.version,
@@ -15,4 +14,3 @@ export async function GET() { const guard = await ensureAdminAPI(); if (guard) r
   }
   return NextResponse.json({ ok: true, env: safe })
 }
-

@@ -1,9 +1,9 @@
+// app/title/[id]/edit/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
-import Link from "next/link";
 import { Header } from "@/components/Header";
 import { useTheme } from "@/lib/theme/context";
 import { ArrowLeft, Upload, X, User, AlertTriangle, CheckCircle } from "lucide-react";
@@ -14,7 +14,7 @@ const TR_STATUS = ["продолжается", "завершен", "заброш
 const AGE = ["0+", "12+", "16+", "18+"] as const;
 const TYPES = ["манга", "манхва", "маньхуа", "другое"] as const;
 
-/** БД хранит статус тайтла на АНГЛИЙСКОМ (ongoing/completed/hiatus) — маппим в/из русских значений UI */
+/** БД хранит статус тайтла на АНГЛИЙСКОМ (ongoing/completed/hiatus) - маппим в/из русских значений UI */
 const STATUS_EN_TO_RU: Record<string, (typeof RU_STATUS)[number]> = {
   ongoing: "онгоинг",
   completed: "завершен",
@@ -25,6 +25,20 @@ const STATUS_RU_TO_EN: Record<(typeof RU_STATUS)[number], "ongoing" | "completed
   завершен: "completed",
   приостановлен: "hiatus",
 };
+
+/* ====== лимиты ====== */
+const LIMITS = {
+  titleRu: 199,
+  titleRomaji: 200,
+  person: 100,         // author / artist
+  description: 4000,
+  modMessage: 1000,
+  teamSearch: 60,
+  url: 2048,
+};
+
+const TEAM_SEARCH_MIN = 3;
+const TEAM_DEBOUNCE_MS = 350; // 300–500 мс — комфортно
 
 const DEFAULT_GENRES = [
   "Арт","Безумие","Боевик","Боевые искусства","Вампиры","Военное","Гарем","Гендерная интрига",
@@ -73,6 +87,9 @@ const toStrArray = (v: any): string[] => {
 };
 const isValidImg = (s: string) => /^https?:\/\/|^\//i.test(s || "");
 
+// безопасная обрезка перед отправкой
+const clamp = (s: string | null | undefined, n: number) => (s ?? "").slice(0, n);
+
 /** безопасный json */
 async function safeJson<T = any>(res: Response): Promise<T | null> {
   const ct = res.headers.get("content-type") || "";
@@ -84,35 +101,87 @@ async function safeJson<T = any>(res: Response): Promise<T | null> {
   try { return JSON.parse(text) as T; } catch { return null; }
 }
 
+function useDebounced<T>(value: T, delay: number) {
+  const [debounced, setDebounced] = React.useState(value);
+  React.useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+  return debounced;
+}
+
 /* ===================================================== */
 
 export default function TitleEditPage() {
   const { theme } = useTheme();
   const router = useRouter();
   const params = useParams<{ id?: string }>();
+  const search = useSearchParams();
+
   const rawId = Array.isArray(params?.id) ? params?.id[0] : params?.id;
   const mangaId = Number(rawId?.match(/^\d+/)?.[0] ?? NaN);
 
+  // --- КУДА ВОЗВРАЩАТЬСЯ ---
+  const fromParamRaw = search?.get("from") || null;
+  const [backHref, setBackHref] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fromParam = fromParamRaw && decodeURIComponent(fromParamRaw);
+    if (fromParam && fromParam.startsWith("/")) {
+      setBackHref(fromParam);
+      return;
+    }
+    const ref = typeof document !== "undefined" ? document.referrer : "";
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    if (ref && origin && ref.startsWith(origin)) {
+      const path = ref.slice(origin.length) || "/";
+      setBackHref(path);
+      return;
+    }
+    setBackHref(`/title/${mangaId}`);
+  }, [fromParamRaw, mangaId]);
+
+  const goBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      const ref = document.referrer;
+      const origin = window.location.origin;
+      if (ref && ref.startsWith(origin)) {
+        router.back();
+        return;
+      }
+    }
+    router.push(backHref || `/title/${mangaId}`);
+  };
+
+  // Глобальный фон страницы - как у тайтла (светлый / тёмный градиент)
   const pageBg =
     theme === "light"
       ? "bg-gray-50 text-gray-900"
-      : "bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-gray-100";
-  const card =
-    theme === "light" ? "bg-white border-gray-200" : "bg-gray-900/40 border-white/10";
+      : "bg-[radial-gradient(1200px_600px_at_20%_-10%,rgba(255,255,255,0.06),transparent_50%),radial-gradient(900px_500px_at_120%_-10%,rgba(59,130,246,0.08),transparent_40%)] bg-[#0f0f0f] text-gray-100";
+
+  // «стеклянные» карточки и инпуты
+  const glassCard =
+    theme === "light"
+      ? "bg-white/80 border-black/10 backdrop-blur-xl"
+      : "bg-white/[0.03] border-white/10 backdrop-blur-xl";
   const label = theme === "light" ? "text-gray-700" : "text-gray-100";
   const muted = theme === "light" ? "text-gray-500" : "text-gray-400";
+
+  // подсказываем системе желаемую схему
+  const inputBase =
+    "w-full rounded-xl px-3 py-2 text-sm placeholder:text-gray-500 focus:outline-none transition-colors " +
+    "[appearance:auto] dark:[color-scheme:dark] light:[color-scheme:light]";
   const inputCls =
     theme === "light"
-      ? "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20"
-      : "w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/20";
+      ? cn(inputBase, "border border-black/10 bg-white/70 focus:border-black/25")
+      : cn(inputBase, "border border-white/10 bg-white/[0.04] text-white focus:border-white/25");
+  const selectCls = inputCls + " [appearance:auto]";
+
+  // кнопки
   const primaryBtn =
-    theme === "light"
-      ? "bg-slate-900 text-white hover:bg-slate-800"
-      : "bg-white text-black hover:opacity-90";
+    "group relative rounded-xl px-5 py-2 text-sm font-semibold border border-black/20 dark:border-white/20 bg-white/80 dark:bg-white/[0.06] hover:bg-white/90 dark:hover:bg-white/[0.09] backdrop-blur transition-all duration-150 hover:-translate-y-0.5 active:translate-y-0 shadow-[0_1px_0_rgba(0,0,0,0.06),0_8px_20px_-10px_rgba(0,0,0,0.45)] hover:shadow-[0_1px_0_rgba(0,0,0,0.06),0_12px_28px_-10px_rgba(0,0,0,0.55)]";
   const secondaryBtn =
-    theme === "light"
-      ? "border-gray-300 bg-white hover:bg-gray-100 text-gray-900"
-      : "border-white/10 bg-gray-800/60 hover:bg-gray-700 text-white";
+    "rounded-xl px-4 py-2 text-sm border border-black/15 dark:border-white/15 bg-transparent hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors";
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -145,7 +214,21 @@ export default function TitleEditPage() {
   const [translatorQuery, setTranslatorQuery] = useState("");
   const [translatorResults, setTranslatorResults] = useState<any[]>([]);
 
-  /* ===== Загрузка текущих данных тайтла ===== */
+  // Дебаунс-значение и кеш результатов
+  const debouncedTeamQ = useDebounced(translatorQuery.trim().toLowerCase(), TEAM_DEBOUNCE_MS);
+  const teamCacheRef = React.useRef<Record<string, any[]>>({});
+
+  // превью обложки
+  const coverPreviewUrl = useMemo(() => {
+    if (!coverFile) return null;
+    return URL.createObjectURL(coverFile);
+  }, [coverFile]);
+
+  useEffect(() => {
+    return () => { if (coverPreviewUrl) URL.revokeObjectURL(coverPreviewUrl); };
+  }, [coverPreviewUrl]);
+
+  /* ===== загрузка ===== */
   useEffect(() => {
     if (!Number.isFinite(mangaId)) return;
     let cancelled = false;
@@ -154,7 +237,6 @@ export default function TitleEditPage() {
       setLoading(true);
       setError(null);
       try {
-        // 1) базовая карточка
         const baseRes = await fetch(`/api/manga/${mangaId}`, {
           cache: "no-store",
           headers: { Accept: "application/json" },
@@ -163,8 +245,6 @@ export default function TitleEditPage() {
         if (!baseRes.ok || !baseJ?.item) throw new Error("Тайтл не найден");
 
         const m = baseJ.item;
-
-        // 2) жанры/теги/команды (если есть соответствующие эндпоинты)
         const [gJ, tJ, tmJ] = await Promise.all([
           fetch(`/api/manga/${mangaId}/genres`, { cache: "no-store" }).then(safeJson<any>).catch(() => null),
           fetch(`/api/manga/${mangaId}/tags`,   { cache: "no-store" }).then(safeJson<any>).catch(() => null),
@@ -173,7 +253,6 @@ export default function TitleEditPage() {
 
         if (cancelled) return;
 
-        // — основные поля
         setCoverUrl(m.cover_url || "");
         setTitleRu(m.title || "");
         setTitleRomaji(m.title_romaji || "");
@@ -181,29 +260,22 @@ export default function TitleEditPage() {
         setArtist(m.artist || "");
         setDescription(m.description || "");
 
-        // статус из БД (en) -> в UI (ru)
         const ru = STATUS_EN_TO_RU[(m.status || "").toString().toLowerCase()] ?? (m.status || "");
         setStatus((ru as any) || "");
 
-        // перевод/возраст/год/тип хранятся на русском — просто подставляем
         setTrStatus((m.translation_status as any) || "");
         setAge((m.age_rating as any) || "");
         setYear(
-          m.release_year == null
-            ? ""
-            : Number.isFinite(Number(m.release_year))
-            ? Number(m.release_year)
-            : ""
+          m.release_year == null ? "" :
+          Number.isFinite(Number(m.release_year)) ? Number(m.release_year) : ""
         );
         setKind((m.type as any) || "");
 
-        // жанры/теги
         const genresFromApi: string[] = Array.isArray(gJ?.items) ? gJ.items.map((x: any) => x.genre) : [];
         const tagsFromApi: string[] = Array.isArray(tJ?.items) ? tJ.items : [];
         setGenres(genresFromApi.length ? genresFromApi : toStrArray(m.genres));
         setTags(tagsFromApi.length ? tagsFromApi : toStrArray(m.tags));
 
-        // переводчики (join таблица)
         const teams = Array.isArray(tmJ?.items) ? tmJ.items : [];
         setTranslators(teams.map((t: any) => ({ id: t.id, name: t.name, slug: t.slug ?? null })));
       } catch (e: any) {
@@ -216,26 +288,46 @@ export default function TitleEditPage() {
     return () => { cancelled = true; };
   }, [mangaId]);
 
-  /* ===== live-поиск команд ===== */
+  /* ===== live-поиск команд (дебаунс + минимум 4 символа + отмена + кеш) ===== */
   useEffect(() => {
     let active = true;
+    const q = debouncedTeamQ;
+
+    // Короткие запросы — не дергаем API
+    if (q.length < TEAM_SEARCH_MIN) {
+      setTranslatorResults([]);
+      return;
+    }
+
+    // Кеш — если уже искали эту строку, берём из памяти
+    if (teamCacheRef.current[q]) {
+      setTranslatorResults(teamCacheRef.current[q]);
+      return;
+    }
+
+    const controller = new AbortController();
+
     (async () => {
-      const q = translatorQuery.trim();
-      if (!q) {
-        setTranslatorResults([]);
-        return;
-      }
       try {
-        const res = await fetch(`/api/teams/search?q=${encodeURIComponent(q)}`);
+        const res = await fetch(`/api/teams/search?q=${encodeURIComponent(q)}`, {
+          signal: controller.signal,
+        });
         const j = await safeJson<any>(res);
-        // !!! сервер возвращает { ok, items } — поэтому берём j.items
-        if (active) setTranslatorResults(Array.isArray(j?.items) ? j.items : (Array.isArray(j?.data) ? j.data : []));
-      } catch {
+        if (!active) return;
+        const items = Array.isArray(j?.items) ? j.items : (Array.isArray(j?.data) ? j.data : []);
+        teamCacheRef.current[q] = items;
+        setTranslatorResults(items);
+      } catch (err: any) {
+        if (err?.name === "AbortError") return; // прервано новым запросом — норм
         if (active) setTranslatorResults([]);
       }
     })();
-    return () => { active = false; };
-  }, [translatorQuery]);
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [debouncedTeamQ]);
 
   function addTranslator(t: any) {
     if (!t) return;
@@ -272,12 +364,11 @@ export default function TitleEditPage() {
       const finalCover = await uploadCoverIfNeeded();
 
       const payload = {
-        title_ru: titleRu || null,
-        title_romaji: titleRomaji || null,
-        author: author || null,
-        artist: artist || null,
-        description: description || null,
-        // RU -> EN для поля status
+        title_ru: clamp(titleRu, LIMITS.titleRu) || null,
+        title_romaji: clamp(titleRomaji, LIMITS.titleRomaji) || null,
+        author: clamp(author, LIMITS.person) || null,
+        artist: clamp(artist, LIMITS.person) || null,
+        description: clamp(description, LIMITS.description) || null,
         status: status ? STATUS_RU_TO_EN[status as (typeof RU_STATUS)[number]] : null,
         translation_status: trStatus || null,
         age_rating: age || null,
@@ -287,17 +378,17 @@ export default function TitleEditPage() {
         genres,
         tags,
         translators,
-        mangaId, // чтобы модераторский эндпоинт точно видел целевой тайтл
+        mangaId,
       };
 
       const body = {
         type: "title_edit",
         mangaId,
-        author_comm: modMessage || null,
-        title_romaji: titleRomaji || null,
+        author_comm: clamp(modMessage, LIMITS.modMessage) || null,
+        title_romaji: clamp(titleRomaji, LIMITS.titleRomaji) || null,
         genres,
         tags,
-        source_links: origLinks,
+        source_links: origLinks.slice(0, 2).map((u) => clamp(u, LIMITS.url)),
         payload,
       };
 
@@ -313,7 +404,7 @@ export default function TitleEditPage() {
       }
 
       setNotice("Правка отправлена на модерацию");
-      router.push(`/title/${mangaId}`);
+      router.push(backHref || `/title/${mangaId}`);
     } catch (e: any) {
       setError(e?.message || "Не удалось отправить на модерацию");
     } finally {
@@ -330,24 +421,27 @@ export default function TitleEditPage() {
     );
   }
 
+  /* ============ РЕНДЕР ============ */
   return (
     <div className={`min-h-screen ${pageBg}`}>
       <Header showSearch={false} />
-      <div className="mx-auto max-w-5xl px-4 py-6">
-        <div className="mb-4 flex items-center gap-3">
-          <Link
-            href={`/title/${mangaId}`}
-            className={cn("inline-flex items-center gap-2 rounded-xl px-3 py-2 border", secondaryBtn)}
+      <div className="mx-auto max-w-6xl px-4 py-6">
+        {/* Хлебные/Навигация */}
+        <div className="mb-6 flex flex-wrap items-center gap-3">
+          <button
+            onClick={goBack}
+            className={cn("inline-flex items-center gap-2", secondaryBtn)}
           >
-            <ArrowLeft className="h-4 w-4" /> Назад к тайтлу
-          </Link>
+            <ArrowLeft className="h-4 w-4" /> Назад
+          </button>
           <div className="text-2xl font-bold">Предложить правку</div>
         </div>
 
+        {/* Alerts */}
         {error && (
           <div
             className={cn(
-              "mb-4 rounded-xl border p-3",
+              "mb-4 rounded-2xl border p-3",
               theme === "light"
                 ? "bg-red-50 border-red-200 text-red-800"
                 : "bg-red-500/10 border-red-500/30 text-red-100"
@@ -360,7 +454,7 @@ export default function TitleEditPage() {
         {notice && (
           <div
             className={cn(
-              "mb-4 rounded-xl border p-3",
+              "mb-4 rounded-2xl border p-3",
               theme === "light"
                 ? "bg-green-50 border-green-200 text-green-800"
                 : "bg-green-500/10 border-green-500/30 text-green-100"
@@ -374,191 +468,273 @@ export default function TitleEditPage() {
         {loading ? (
           <div className="opacity-70 text-sm">Загрузка…</div>
         ) : (
-          <div className={cn("space-y-6 rounded-2xl border p-5", card)}>
-            {/* COVER + названия */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-[220px_1fr]">
-              <div>
-                <div className="relative h-[300px] w-full overflow-hidden rounded-xl border border-black/10 dark:border-white/10">
-                  {coverFile ? (
-                    <Image src={URL.createObjectURL(coverFile)} alt="preview" fill className="object-cover" />
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
+            {/* Левая колонка - обложка/загрузка */}
+            <aside className={cn("md:col-span-4", "md:sticky md:top-6 self-start")}>
+              <div className={cn("rounded-2xl border p-4", glassCard)}>
+                <div className="relative h-[360px] w-full overflow-hidden rounded-xl border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5">
+                  {coverPreviewUrl ? (
+                    <Image src={coverPreviewUrl} alt="preview" fill className="object-cover" unoptimized />
                   ) : isValidImg(coverUrl) ? (
                     <Image src={coverUrl} alt="cover" fill className="object-cover" />
                   ) : (
                     <div className={cn("grid h-full w-full place-items-center text-sm", muted)}>Нет обложки</div>
                   )}
                 </div>
-                <label className={cn("mt-2 inline-flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2", secondaryBtn)}>
-                  <Upload className="h-4 w-4" />
-                  <span>Загрузить файл</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => setCoverFile(e.target.files?.[0] || null)} />
-                </label>
-                <div className="mt-2">
-                  <input
-                    placeholder="Или URL обложки…"
-                    className={inputCls}
-                    value={coverUrl}
-                    onChange={(e) => setCoverUrl(e.target.value)}
+
+                <div className="mt-4 flex flex-col gap-2">
+                  <label className={cn("inline-flex cursor-pointer items-center justify-center gap-2", secondaryBtn)}>
+                    <Upload className="h-4 w-4" />
+                    <span>Загрузить файл</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                </div>
+              </div>
+            </aside>
+
+            {/* Правая колонка - форма */}
+            <section className="md:col-span-8 space-y-6">
+              {/* Основная информация */}
+              <div className={cn("rounded-2xl border", glassCard)}>
+                <SectionHeader title="Основная информация" />
+                <div className="p-4 md:p-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <Field label="Название (русское)" labelClass={label}>
+                    <input
+                      className={inputCls}
+                      value={titleRu}
+                      maxLength={LIMITS.titleRu}
+                      onChange={(e) => setTitleRu(e.target.value)}
+                      placeholder="«Ван-панчмэн»"
+                    />
+                  </Field>
+                  <Field label="Оригинальное (ромадзи)" labelClass={label}>
+                    <input
+                      className={inputCls}
+                      value={titleRomaji}
+                      maxLength={LIMITS.titleRomaji}
+                      onChange={(e) => setTitleRomaji(e.target.value)}
+                      placeholder="One Punch Man / Wanpanman"
+                    />
+                  </Field>
+                  <Field label="Автор" labelClass={label}>
+                    <input
+                      className={inputCls}
+                      value={author}
+                      maxLength={LIMITS.person}
+                      onChange={(e) => setAuthor(e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Художник" labelClass={label}>
+                    <input
+                      className={inputCls}
+                      value={artist}
+                      maxLength={LIMITS.person}
+                      onChange={(e) => setArtist(e.target.value)}
+                    />
+                  </Field>
+                </div>
+                <div className="px-4 md:px-5">
+                  <Divider />
+                </div>
+                {/* Описание */}
+                <div className="p-4 md:p-5">
+                  <div className={cn("mb-1 text-sm", label)}>Описание</div>
+                  <textarea
+                    className={cn(
+                      inputCls,
+                      "min-h-[140px] max-h-60 resize-none overflow-auto leading-relaxed",
+                      "nice-scrollbar"
+                    )}
+                    value={description}
+                    maxLength={LIMITS.description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Краткое описание тайтла…"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <div className={cn("mb-1 text-sm", label)}>Название (русское)</div>
-                  <input className={inputCls} value={titleRu} onChange={(e) => setTitleRu(e.target.value)} placeholder="«Ван-панчмэн»" />
-                </div>
-                <div>
-                  <div className={cn("mb-1 text-sm", label)}>Оригинальное (ромадзи)</div>
-                  <input className={inputCls} value={titleRomaji} onChange={(e) => setTitleRomaji(e.target.value)} placeholder="One Punch Man / Wanpanman" />
-                </div>
-                <div>
-                  <div className={cn("mb-1 text-sm", label)}>Автор</div>
-                  <input className={inputCls} value={author} onChange={(e) => setAuthor(e.target.value)} />
-                </div>
-                <div>
-                  <div className={cn("mb-1 text-sm", label)}>Художник</div>
-                  <input className={inputCls} value={artist} onChange={(e) => setArtist(e.target.value)} />
+              {/* Статусы и атрибуты */}
+              <div className={cn("rounded-2xl border", glassCard)}>
+                <SectionHeader title="Статусы и атрибуты" />
+                <div className="p-4 md:p-5 grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <Select label="Статус тайтла" value={status} onChange={setStatus} items={RU_STATUS} theme={theme} cls={selectCls} />
+                  <Select label="Статус перевода" value={trStatus} onChange={setTrStatus} items={TR_STATUS} theme={theme} cls={selectCls} />
+                  <Select label="Возрастное ограничение" value={age} onChange={setAge} items={AGE} theme={theme} cls={selectCls} />
+                  <Field label="Год релиза" labelClass={label}>
+                    <input
+                      className={cn(
+                        inputCls,
+                        "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      )}
+                      type="number"
+                      min={1900}
+                      max={new Date().getFullYear() + 1}
+                      value={year}
+                      onChange={(e) => setYear(e.target.value ? Number(e.target.value) : "")}
+                      placeholder="например, 2012"
+                    />
+                  </Field>
+                  <Select label="Тип" value={kind} onChange={setKind} items={TYPES} theme={theme} cls={selectCls} />
                 </div>
               </div>
-            </div>
 
-            {/* Описание */}
-            <div>
-              <div className={cn("mb-1 text-sm", label)}>Описание</div>
-              <textarea className={cn(inputCls, "min-h-[140px]")} value={description} onChange={(e) => setDescription(e.target.value)} />
-            </div>
-
-            {/* Селекты */}
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              <Select label="Статус тайтла" value={status} onChange={setStatus} items={RU_STATUS} theme={theme} />
-              <Select label="Статус перевода" value={trStatus} onChange={setTrStatus} items={TR_STATUS} theme={theme} />
-              <Select label="Возрастное ограничение" value={age} onChange={setAge} items={AGE} theme={theme} />
-              <div>
-                <div className={cn("mb-1 text-sm", label)}>Год релиза</div>
-                <input
-                  className={inputCls}
-                  type="number"
-                  min={1900}
-                  max={new Date().getFullYear() + 1}
-                  value={year}
-                  onChange={(e) => setYear(e.target.value ? Number(e.target.value) : "")}
-                />
+              {/* Жанры и теги */}
+              <div className={cn("rounded-2xl border", glassCard)}>
+                <SectionHeader title="Жанры и теги" />
+                <div className="p-4 md:p-5 grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <PickTokens
+                    title="Жанры"
+                    theme={theme}
+                    values={genres}
+                    setValues={setGenres}
+                    placeholder="поиск по жанрам…"
+                    quick={DEFAULT_GENRES}
+                  />
+                  <PickTokens
+                    title="Теги"
+                    theme={theme}
+                    values={tags}
+                    setValues={setTags}
+                    placeholder="поиск по тегам…"
+                    quick={DEFAULT_TAGS}
+                  />
+                </div>
               </div>
-              <Select label="Тип" value={kind} onChange={setKind} items={TYPES} theme={theme} />
-            </div>
 
-            {/* ЖАНРЫ / ТЕГИ */}
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              <PickTokens
-                title="Жанры"
-                theme={theme}
-                values={genres}
-                setValues={setGenres}
-                placeholder="добавьте жанр и Enter"
-                quick={DEFAULT_GENRES}
-              />
-              <PickTokens
-                title="Теги"
-                theme={theme}
-                values={tags}
-                setValues={setTags}
-                placeholder="добавьте тег и Enter"
-                quick={DEFAULT_TAGS}
-              />
-            </div>
-
-            {/* Переводчики */}
-            <div>
-              <div className={cn("mb-1 text-sm", label)}>Переводчики</div>
-              <div className="mb-2 flex flex-wrap gap-2">
-                {translators.length === 0 ? <span className={cn("text-sm", muted)}>Пока не выбрано</span> : null}
-                {translators.map((t) => (
-                  <span
-                    key={String(t.id)}
-                    className={cn(
-                      "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm",
-                      theme === "light"
-                        ? "bg-white border-gray-300 text-gray-800"
-                        : "bg-slate-900 border-white/10 text-white"
-                    )}
-                  >
-                    <User className="h-4 w-4 opacity-70" />
-                    <span className="max-w-[200px] truncate">{t.name}</span>
-                    <button
-                      className="opacity-70 hover:opacity-100"
-                      onClick={() => removeTranslator(t.id)}
-                      aria-label="Удалить переводчика"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <div className="relative">
-                <input
-                  className={inputCls}
-                  value={translatorQuery}
-                  onChange={(e) => setTranslatorQuery(e.target.value)}
-                  placeholder="Найдите команду по названию/слагу…"
-                />
-                {translatorResults.length > 0 && (
-                  <div
-                    className={cn(
-                      "absolute z-10 mt-1 w-full overflow-hidden rounded-xl border",
-                      theme === "light" ? "bg-white border-gray-200" : "bg-slate-900 border-white/10 text-white"
-                    )}
-                  >
-                    {translatorResults.map((t) => (
-                      <button
-                        key={t.id as any}
-                        type="button"
-                        onClick={() => addTranslator(t)}
+              {/* Переводчики */}
+              <div className={cn("rounded-2xl border", glassCard, "relative z-[60]")}>
+                <SectionHeader title="Переводчики" />
+                <div className="p-4 md:p-5">
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    {translators.length === 0 ? <span className={cn("text-sm", muted)}>Пока не выбрано</span> : null}
+                    {translators.map((t) => (
+                      <span
+                        key={String(t.id)}
                         className={cn(
-                          "w-full px-3 py-2 text-left text-sm",
-                          theme === "light" ? "hover:bg-gray-50" : "hover:bg-white/10"
+                          "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm",
+                          theme === "light"
+                            ? "bg-white/80 border-black/10 text-gray-900 backdrop-blur"
+                            : "bg-white/[0.06] border-white/10 text-white backdrop-blur"
                         )}
                       >
-                        {t.name} {t.slug ? <span className="opacity-70">({t.slug})</span> : null}
-                      </button>
+                        <User className="h-4 w-4 opacity-70" />
+                        <span className="max-w-[220px] truncate">{t.name}</span>
+                        <button
+                          className="opacity-70 hover:opacity-100"
+                          onClick={() => removeTranslator(t.id)}
+                          aria-label="Удалить переводчика"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </span>
                     ))}
                   </div>
-                )}
-              </div>
-            </div>
+                  <div className="relative">
+                  <input
+                    className={inputCls}
+                    value={translatorQuery}
+                    maxLength={LIMITS.teamSearch}
+                    onChange={(e) => setTranslatorQuery(e.target.value)}
+                    placeholder="Найдите команду по названию/слагу…"
+                  />
 
-            {/* Ссылки + сообщение */}
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              <TokenInput
-                label="Ссылки на оригинал (для модерации)"
-                theme={theme}
-                values={origLinks}
-                placeholder="вставьте ссылку и Enter"
-                onChange={setOrigLinks}
-              />
-              <div>
-                <div className={cn("mb-1 text-sm", label)}>Сообщение для модераторов</div>
-                <textarea
-                  className={cn(inputCls, "min-h-[120px]")}
-                  placeholder="Источник названия/обложки и причина правок"
-                  value={modMessage}
-                  onChange={(e) => setModMessage(e.target.value)}
-                />
-              </div>
-            </div>
+                  {translatorQuery.trim().length > 0 &&
+                  translatorQuery.trim().length < TEAM_SEARCH_MIN && (
+                    <div className="mt-1 text-xs opacity-70">
+                      Введите ещё {TEAM_SEARCH_MIN - translatorQuery.trim().length} символ(а) для поиска
+                    </div>
+                  )}
 
-            {/* Кнопки */}
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                onClick={submitForModeration}
-                disabled={saving}
-                className={cn("rounded-lg px-4 py-2 text-sm font-medium", primaryBtn, saving && "opacity-60 cursor-not-allowed")}
-              >
-                Отправить на модерацию
-              </button>
-              <Link href={`/title/${mangaId}`} className={cn("rounded-lg px-4 py-2 text-sm border", secondaryBtn)}>
-                Отмена
-              </Link>
-            </div>
+                  {translatorResults.length > 0 &&
+                  translatorQuery.trim().length >= TEAM_SEARCH_MIN && (
+                    <div
+                      role="listbox"
+                      className={cn(
+                        // поверх соседних карточек
+                        "absolute left-0 right-0 mt-1 w-full overflow-auto rounded-2xl border z-[70] shadow-xl",
+                        // 7–8 строк по ~40px = 280–320px
+                        "max-h-[155px]",
+                        // единый аккуратный скролл
+                        "nice-scrollbar",
+                        // фон/границы по теме
+                        theme === "light"
+                          ? "bg-white/95 border-black/10 backdrop-blur"
+                          : "bg-[#0b0b0f]/95 border-white/10 backdrop-blur text-white"
+                      )}
+                    >
+                      {translatorResults.map((t) => (
+                        <button
+                          key={t.id as any}
+                          type="button"
+                          onClick={() => addTranslator(t)}
+                          className={cn(
+                            // фиксированная высота строки — так ровно считается «8 штук»
+                            "w-full h-10 px-3 text-left text-sm flex items-center",
+                            theme === "light" ? "hover:bg-black/5" : "hover:bg-white/10"
+                          )}
+                        >
+                          <span className="truncate">{t.name}</span>
+                          {t.slug ? (
+                            <span className="ml-2 opacity-70 truncate">({t.slug})</span>
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Источники + модсообщение */}
+              <div className={cn("rounded-2xl border", glassCard)}>
+                <SectionHeader title="Источники и комментарий для модерации" />
+                <div className="p-4 md:p-5 grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <LinksInput
+                    label="Ссылки на оригинал"
+                    theme={theme}
+                    values={origLinks}
+                    placeholder="https://…"
+                    onChange={setOrigLinks}
+                  />
+                  <div>
+                    <div className={cn("mb-1 text-sm", label)}>Сообщение для модераторов</div>
+                    <textarea
+                      className={cn(
+                        inputCls,
+                        "min-h-[120px] max-h-56 resize-none overflow-auto",
+                        "nice-scrollbar"
+                      )}
+                      placeholder="Источник названия/обложки и причина правок"
+                      value={modMessage}
+                      maxLength={LIMITS.modMessage}
+                      onChange={(e) => setModMessage(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Панель действий */}
+                <div className="px-4 md:px-5 pb-4 md:pb-5">
+                  <div className="h-px w-full bg-black/10 dark:bg-white/10 mb-4" />
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      onClick={submitForModeration}
+                      disabled={saving}
+                      className={cn(primaryBtn, saving && "opacity-60 cursor-not-allowed")}
+                    >
+                      Отправить на модерацию
+                    </button>
+                    <button onClick={goBack} className={secondaryBtn}>
+                      Отмена
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
         )}
       </div>
@@ -567,109 +743,65 @@ export default function TitleEditPage() {
 }
 
 /* ====== мелкие UI ====== */
-function Select<T extends readonly string[]>({
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <div className="px-4 md:px-5 pt-4 md:pt-5">
+      <h3 className="text-base font-semibold tracking-tight">{title}</h3>
+      <div className="mt-3 h-px w-full bg-black/10 dark:bg-white/10" />
+    </div>
+  );
+}
+
+function Divider() { return <div className="h-px w-full bg-black/10 dark:bg-white/10" />; }
+
+function Field({
   label,
-  value,
-  onChange,
-  items,
-  theme,
+  children,
+  labelClass,
+}: {
+  label: string;
+  children: React.ReactNode;
+  labelClass?: string;
+}) {
+  return (
+    <div>
+      <div className={cn("mb-1 text-sm", labelClass)}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function Select<T extends readonly string[]>({
+  label, value, onChange, items, theme, cls,
 }: {
   label: string;
   value: T[number] | "";
   onChange: (v: T[number] | "") => void;
   items: T;
   theme: "light" | "dark";
+  cls: string;
 }) {
-  const cls =
-    theme === "light"
-      ? "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20"
-      : "w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/20";
+  const selectStyle: React.CSSProperties = { colorScheme: "light" };
   return (
     <div>
       <div className={`mb-1 text-sm ${theme === "light" ? "text-gray-700" : "text-gray-100"}`}>{label}</div>
-      <select className={cls} value={value} onChange={(e) => onChange(e.target.value as any)}>
-        <option value="">—</option>
+      <select
+        className={`${cls} [&>option]:text-black dark:[&>option]:text-black appearance-auto`}
+        value={value}
+        onChange={(e) => onChange(e.target.value as any)}
+        style={selectStyle}
+      >
+        <option value="" className="text-black">-</option>
         {items.map((it) => (
-          <option value={it} key={it}>
-            {it}
-          </option>
+          <option value={it} key={it} className="text-black">{it}</option>
         ))}
       </select>
     </div>
   );
 }
 
-function TokenInput({
-  label,
-  theme,
-  values,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  theme: "light" | "dark";
-  values: string[];
-  onChange: (v: string[]) => void;
-  placeholder?: string;
-}) {
-  const [val, setVal] = useState("");
-  const inputCls =
-    theme === "light"
-      ? "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20"
-      : "w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/20";
-  const chip =
-    theme === "light"
-      ? "inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-800"
-      : "inline-flex items-center gap-1 rounded-full bg-blue-500/20 px-2 py-1 text-xs text-blue-300";
-
-  const add = () => {
-    const s = val.trim();
-    if (!s) return;
-    if (!values.includes(s)) onChange([...values, s]);
-    setVal("");
-  };
-  const remove = (s: string) => onChange(values.filter((x) => x !== s));
-
-  return (
-    <div>
-      <div className={`mb-1 text-sm ${theme === "light" ? "text-gray-700" : "text-gray-100"}`}>{label}</div>
-      <div className="flex gap-2">
-        <input
-          className={`${inputCls} flex-1`}
-          value={val}
-          onChange={(e) => setVal(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())}
-          placeholder={placeholder}
-        />
-        <button
-          type="button"
-          onClick={add}
-          className={`rounded px-3 py-2 text-sm ${theme === "light" ? "bg-slate-900 text-white" : "bg-white text-black"}`}
-        >
-          +
-        </button>
-      </div>
-      <div className="mt-2 flex flex-wrap gap-1">
-        {values.map((s) => (
-          <span key={s} className={chip}>
-            {s}
-            <button type="button" onClick={() => remove(s)} className="ml-1 hover:opacity-80">
-              ×
-            </button>
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function PickTokens({
-  title,
-  theme,
-  values,
-  setValues,
-  placeholder,
-  quick,
+  title, theme, values, setValues, placeholder, quick,
 }: {
   title: string;
   theme: "light" | "dark";
@@ -678,34 +810,200 @@ function PickTokens({
   placeholder: string;
   quick: readonly string[];
 }) {
+  const [q, setQ] = React.useState("");
+
+  const inputBase =
+    "w-full rounded-xl px-3 py-2 text-sm placeholder:text-gray-500 focus:outline-none transition-colors " +
+    "[appearance:auto] dark:[color-scheme:dark] light:[color-scheme:light]";
+  const inputCls =
+    theme === "light"
+      ? cn(inputBase, "border border-black/10 bg-white/70 focus:border-black/25")
+      : cn(inputBase, "border border-white/10 bg-white/[0.04] text-white focus:border-white/25");
+
+  const available = React.useMemo(
+    () => quick.filter((x) => !values.includes(x)),
+    [quick, values]
+  );
+
+  const filtered = React.useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return available;
+    return available.filter((x) => x.toLowerCase().includes(s));
+  }, [q, available]);
+
+  const add = (token: string) => {
+    if (!values.includes(token)) setValues([...values, token]);
+    setQ("");
+  };
+  const remove = (token: string) => setValues(values.filter((x) => x !== token));
+
+  const onEnter: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
+    if (e.key === "Enter") { e.preventDefault(); if (filtered.length > 0) add(filtered[0]); }
+  };
+
   return (
     <div>
       <div className={`mb-1 text-sm ${theme === "light" ? "text-gray-700" : "text-gray-100"}`}>{title}</div>
-      <TokenInput label="" theme={theme} values={values} onChange={setValues} placeholder={placeholder} />
-      <div className="mt-2 max-h-44 overflow-auto rounded-lg border border-white/10 p-2 text-xs">
-        <div className="flex flex-wrap gap-2">
-          {quick.map((q) => {
-            const active = values.includes(q);
-            return (
+      <input
+        className={cn(inputCls, "mb-2")}
+        value={q}
+        maxLength={LIMITS.teamSearch}
+        onChange={(e) => setQ(e.target.value)}
+        onKeyDown={onEnter}
+        placeholder={placeholder || "поиск по списку…"}
+      />
+      <div className="mb-2 flex flex-wrap gap-1">
+        {values.map((s) => (
+          <span
+            key={s}
+            className={
+              theme === "light"
+                ? "inline-flex items-center gap-1 rounded-full bg-black/10 px-2 py-1 text-xs text-gray-800 border border-black/10 backdrop-blur"
+                : "inline-flex items-center gap-1 rounded-full bg-white/[0.06] px-2 py-1 text-xs text-gray-100 border border-white/10 backdrop-blur"
+            }
+          >
+            {s}
+            <button type="button" onClick={() => remove(s)} className="ml-1 hover:opacity-80">×</button>
+          </span>
+        ))}
+      </div>
+
+      <div
+        className={cn(
+          "mt-2 max-h-44 overflow-auto rounded-xl border border-black/10 dark:border-white/10 p-2 text-xs bg-white/60 dark:bg-white/[0.04] backdrop-blur",
+          "nice-scrollbar"
+        )}
+      >
+        {filtered.length === 0 ? (
+          <div className={cn("py-6 text-center", theme === "light" ? "text-gray-500" : "text-gray-400")}>
+            Ничего не найдено
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {filtered.map((token) => (
               <button
-                key={q}
+                key={token}
                 type="button"
-                onClick={() => setValues(active ? values.filter((x) => x !== q) : [...values, q])}
-                className={`rounded-full px-2 py-1 ${
+                onClick={() => add(token)}
+                className={cn(
+                  "rounded-full px-2 py-1 transition-colors",
                   theme === "light"
-                    ? active
-                      ? "bg-blue-600 text-white"
-                      : "bg-slate-100 text-gray-800 hover:bg-slate-200"
-                    : active
-                    ? "bg-blue-500/30 text-blue-200"
-                    : "bg-slate-800/60 text-slate-200 hover:bg-slate-700"
-                }`}
+                    ? "bg-black/5 text-gray-800 hover:bg-black/10"
+                    : "bg-white/[0.08] text-slate-200 hover:bg-white/[0.14]"
+                )}
+                title="Добавить"
               >
-                {q}
+                {token}
               </button>
-            );
-          })}
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LinksInput({
+  label, theme, values, onChange, placeholder,
+}: {
+  label: string;
+  theme: "light" | "dark";
+  values: string[];
+  onChange: (v: string[]) => void;
+  placeholder?: string;
+}) {
+  const MAX = 2;
+
+  const [rows, setRows] = useState<string[]>(() =>
+    values.length ? values.slice(0, MAX) : [""]
+  );
+
+  useEffect(() => {
+    const sanitized = rows.map((s) => s.trim()).filter(Boolean).slice(0, MAX);
+    onChange(sanitized);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
+
+  const inputBase =
+    "w-full rounded-xl px-3 py-2 text-sm placeholder:text-gray-500 focus:outline-none transition-colors " +
+    "[appearance:auto] dark:[color-scheme:dark] light:[color-scheme:light]";
+  const inputCls =
+    theme === "light"
+      ? cn(inputBase, "border border-black/10 bg-white/70 focus:border-black/25")
+      : cn(inputBase, "border border-white/10 bg-white/[0.04] text-white focus:border-white/25");
+
+  const btnCls =
+    "rounded-xl border border-black/15 dark:border-white/15 bg-transparent px-3 py-2 text-sm transition-colors " +
+    "hover:bg-black/[0.04] dark:hover:bg-white/[0.06]";
+
+  const plusDisabled = rows.length >= MAX;
+
+  const update = (i: number, val: string) => {
+    setRows((prev) => {
+      const next = [...prev];
+      next[i] = val;
+      return next;
+    });
+  };
+
+  const addRow = () => { if (!plusDisabled) setRows((prev) => [...prev, ""]); };
+  const removeRow = (i: number) => {
+    setRows((prev) => {
+      const next = prev.filter((_, idx) => idx !== i);
+      return next.length ? next : [""];
+    });
+  };
+
+  return (
+    <div>
+      {label && (
+        <div className={`mb-1 text-sm ${theme === "light" ? "text-gray-700" : "text-gray-100"}`}>
+          {label}
         </div>
+      )}
+
+      <div className="space-y-2">
+        {rows.map((val, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <input
+              className={cn(inputCls, "flex-1")}
+              value={val}
+              maxLength={LIMITS.url}
+              onChange={(e) => update(i, e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && i === rows.length - 1 && !plusDisabled) {
+                  e.preventDefault();
+                  addRow();
+                }
+              }}
+              placeholder={placeholder || "https://…"}
+              inputMode="url"
+            />
+            {rows.length > 1 && (
+              <button
+                type="button"
+                onClick={() => removeRow(i)}
+                className={btnCls}
+                aria-label="Удалить строку"
+                title="Удалить"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-2">
+        <button
+          type="button"
+          onClick={addRow}
+          className={cn(btnCls, plusDisabled && "opacity-50 cursor-not-allowed")}
+          disabled={plusDisabled}
+          title={plusDisabled ? "Можно максимум 2 ссылки" : "Добавить строку"}
+        >
+          +
+        </button>
       </div>
     </div>
   );

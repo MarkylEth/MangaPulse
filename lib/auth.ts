@@ -1,45 +1,46 @@
 // lib/auth.ts
-import { cookies } from 'next/headers';
-import { query } from '@/lib/db';
-import { verifySession, SESSION_COOKIE } from '@/lib/auth/session';
+import { query } from "@/lib/db";
+import { readSessionTokenFromCookies, verifySession } from "@/lib/auth/session";
 
 export type AuthUser = {
   id: string;
-  email: string;
+  email: string | null;
   nickname: string | null;
-  created_at: string;
+  created_at: string;  // ISO
+  role: "admin" | "moderator" | "user";
 };
 
 export async function getAuthUser(): Promise<AuthUser | null> {
-  // Next 15: сначала получить "банку" куки
-  const jar = await cookies();
-  const token = jar.get(SESSION_COOKIE)?.value ?? null;
-
-  const payload = await verifySession(token);
+  const token = await readSessionTokenFromCookies();
+  const payload = verifySession(token);
   if (!payload?.sub) return null;
-  const uid = String(payload.sub);
 
-  // Старая/новая схемы users: сначала пробуем nickname, если нет — name
-  try {
-    const { rows } = await query<AuthUser>(
-      `select id, email, nickname, created_at
-         from users where id = $1 limit 1`,
-      [uid]
-    );
-    if (rows[0]) return rows[0];
-  } catch (e: any) {
-    // 42703 = undefined_column
-    if (e?.code !== '42703') throw e;
-  }
+  const { rows } = await query<{
+    id: string;
+    email: string | null;
+    nickname: string | null;
+    created_at: string | Date;
+    role: "admin" | "moderator" | "user" | null;
+  }>(
+    `SELECT u.id, u.email, COALESCE(u.nickname, u.name) AS nickname, u.created_at, p.role
+       FROM public.users u
+  LEFT JOIN public.profiles p ON p.id = u.id
+      WHERE u.id = $1
+      LIMIT 1`,
+    [String(payload.sub)]
+  );
 
-  try {
-    const { rows } = await query<AuthUser>(
-      `select id, email, name as nickname, created_at
-         from users where id = $1 limit 1`,
-      [uid]
-    );
-    if (rows[0]) return rows[0];
-  } catch {}
+  const row = rows[0];
+  if (!row) return null;
 
-  return null;
+  return {
+    id: row.id,
+    email: row.email,
+    nickname: row.nickname,
+    created_at:
+      typeof row.created_at === "string"
+        ? row.created_at
+        : new Date(row.created_at).toISOString(),
+    role: (row.role ?? "user") as "admin" | "moderator" | "user",
+  };
 }

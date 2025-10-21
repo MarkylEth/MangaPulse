@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import * as jose from "jose";
-import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
+import { verifySession } from '@/lib/auth/session';
+import { SESSION_COOKIE } from '@/lib/auth/config';
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

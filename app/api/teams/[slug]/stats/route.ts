@@ -7,49 +7,31 @@ export async function GET(_req: NextRequest, { params }: { params: { slug: strin
   if (!team) return NextResponse.json({ error: 'Team not found' }, { status: 404 })
 
   const sql = `
-    with team_titles as (
-      select manga_id
-      from translator_team_manga
-      where team_id = $1
-    ),
-    base as (
-      -- главы с явным team_id
-      select c.id, c.manga_id,
-             lower(coalesce(c.review_status,'')) as review_status,
-             lower(coalesce(c.status,''))        as status,
-             c.pages_count
-      from chapters c
-      where c.team_id = $1::int
-
-      union all
-
-      -- главы без team_id, но принадлежащие тайтлам команды
-      select c.id, c.manga_id,
-             lower(coalesce(c.review_status,'')) as review_status,
-             lower(coalesce(c.status,''))        as status,
-             c.pages_count
-      from chapters c
-      where c.team_id is null
-        and exists (select 1 from team_titles t where t.manga_id = c.manga_id)
-    ),
-    norm as (
-      select *,
-        (
-          status = any (array['published','release','released','public','done','complete'])
-          or review_status = any (array['approved','accept','accepted','ok'])
-        ) as is_translated
-      from base
-    )
-    select
-      count(*) filter (where is_translated)                           as translated_chapters,
-      coalesce(sum(pages_count) filter (where is_translated), 0)::int as translated_pages,
-      count(*) filter (where not is_translated)                       as in_work
-    from norm;
+    -- Считаем главы где team_id в массиве team_ids
+    SELECT 
+      COUNT(*) FILTER (
+        WHERE LOWER(COALESCE(status, '')) = ANY(ARRAY['published','release','released','public','done','complete'])
+           OR LOWER(COALESCE(review_status, '')) = ANY(ARRAY['approved','accept','accepted','ok'])
+      )::INT AS translated_chapters,
+      
+      COALESCE(SUM(pages_count) FILTER (
+        WHERE LOWER(COALESCE(status, '')) = ANY(ARRAY['published','release','released','public','done','complete'])
+           OR LOWER(COALESCE(review_status, '')) = ANY(ARRAY['approved','accept','accepted','ok'])
+      ), 0)::INT AS translated_pages,
+      
+      COUNT(*) FILTER (
+        WHERE LOWER(COALESCE(status, '')) NOT IN ('published','release','released','public','done','complete')
+          AND LOWER(COALESCE(review_status, '')) NOT IN ('approved','accept','accepted','ok')
+      )::INT AS in_work
+      
+    FROM chapters
+    WHERE $1 = ANY(team_ids) -- проверяем, что team.id есть в массиве team_ids
   `
 
   try {
     const r = await query(sql, [team.id])
     const row = r.rows[0] ?? { translated_chapters: 0, translated_pages: 0, in_work: 0 }
+    
     return NextResponse.json({
       translated_chapters: Number(row.translated_chapters || 0),
       translated_pages:    Number(row.translated_pages || 0),
@@ -57,6 +39,10 @@ export async function GET(_req: NextRequest, { params }: { params: { slug: strin
     })
   } catch (e) {
     console.error('Team stats SQL failed:', e)
-    return NextResponse.json({ translated_chapters: 0, translated_pages: 0, in_work: 0 })
+    return NextResponse.json({ 
+      translated_chapters: 0, 
+      translated_pages: 0, 
+      in_work: 0 
+    })
   }
 }

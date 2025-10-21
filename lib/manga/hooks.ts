@@ -1,4 +1,4 @@
-// lib/manga/hooks.ts
+// lib/title/hooks.ts
 
 'use client';
 

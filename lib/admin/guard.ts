@@ -1,29 +1,54 @@
 // lib/admin/guard.ts
-// ⛳️ Админ-гварды переведены в "мягкий" режим:
-// — авторизация отключена, поэтому проверок прав нет;
-// — возвращаем консервативные значения (скрывать админ‑кнопки), но не ломаем маршруты.
+import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
+import { verifySession } from "@/lib/auth/session";
+import { SESSION_COOKIE } from "@/lib/auth/config";
+import { query } from "@/lib/db";
 
-import React from 'react'
+type Role = "admin" | "moderator" | "user";
 
-/** Роль пользователя в старой системе (оставлено для совместимости типов) */
-export type Role = 'admin' | 'moderator' | 'user' | 'guest'
-export type UserLike = null
-
-/** Везде возвращаем false, чтобы UI не показывал опасные действия. */
-export function isAdmin(_user?: UserLike): boolean {
-  return false
-}
-export function isModerator(_user?: UserLike): boolean {
-  return false
+async function readUserIdFromCookie(): Promise<string | null> {
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE)?.value ?? null;
+  const payload = verifySession(token);
+  return payload?.sub ? String(payload.sub) : null;
 }
 
-/** Хелпер для условного рендера (скрывает children без auth) */
-export function AdminOnly({ children }: { children: React.ReactNode }) {
-  if (!isAdmin(null)) return null
-  return {children}
+async function getRoleFromDb(userId: string): Promise<Role | null> {
+  const r = await query<{ role: Role }>(
+    `SELECT role FROM public.profiles WHERE id::text = $1 LIMIT 1`,
+    [userId]
+  );
+  return r.rows[0]?.role ?? null;
 }
 
-/** Совместимый no-op — раньше бросал/редиректил. */
-export function assertAdmin(_user?: UserLike) {
-  // auth отключён — ничего не делаем
+/** Требуется админ */
+export async function requireAdmin(): Promise<{ userId: string; role: Role }> {
+  const userId = await readUserIdFromCookie();
+  if (!userId) notFound();
+
+  const role = (await getRoleFromDb(userId)) ?? "user";
+  if (role !== "admin") notFound();
+
+  return { userId, role };
+}
+
+/** Требуется админ или модератор */
+export async function requireModerator(): Promise<{ userId: string; role: Role }> {
+  const userId = await readUserIdFromCookie();
+  if (!userId) notFound();
+
+  const role = (await getRoleFromDb(userId)) ?? "user";
+  if (role !== "admin" && role !== "moderator") notFound();
+
+  return { userId, role };
+}
+
+/** Текущий пользователь (без проверки роли) */
+export async function getCurrentUser(): Promise<{ userId: string; role: Role } | null> {
+  const userId = await readUserIdFromCookie();
+  if (!userId) return null;
+
+  const role = (await getRoleFromDb(userId)) ?? "user";
+  return { userId, role };
 }

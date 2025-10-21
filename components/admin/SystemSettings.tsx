@@ -4,8 +4,9 @@ import { Settings } from 'lucide-react';
 
 export function SystemSettings() {
   const { theme } = useTheme();
-  const textClass = theme === 'light' ? 'text-gray-900' : 'text-white';
-  const mutedTextClass = theme === 'light' ? 'text-gray-600' : 'text-slate-400';
+
+  const textClass = 'text-black dark:text-white';
+  const mutedTextClass = 'text-gray-600 dark:text-gray-400';
 
   return (
     <div className="space-y-6">
@@ -13,6 +14,7 @@ export function SystemSettings() {
         <h1 className={`text-3xl font-bold ${textClass} mb-2`}>Системные настройки</h1>
         <p className={mutedTextClass}>Конфигурация системы и глобальные настройки платформы</p>
       </div>
+
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <Settings className={`w-16 h-16 mx-auto mb-4 ${mutedTextClass}`} />

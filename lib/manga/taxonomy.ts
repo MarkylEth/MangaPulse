@@ -1,4 +1,4 @@
-// lib/manga/taxonomy.ts
+// lib/title/taxonomy.ts
 
 export { GENRES, TAGS } from '@/lib/taxonomy';
 

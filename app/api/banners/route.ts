@@ -19,7 +19,6 @@ function titleFromFile(name: string) {
 
 export async function GET() {
   try {
-    // необязательная настройка ссылок/заголовков через banners.json
     let cfg: CfgItem[] = []
     try {
       const json = await fs.readFile(path.join(BANNERS_DIR, 'banners.json'), 'utf8')
@@ -28,7 +27,6 @@ export async function GET() {
       /* ignore — файла может не быть */
     }
 
-    // читаем файлы из /public/banners
     const all = await fs.readdir(BANNERS_DIR)
     const files = all.filter(f => exts.has(path.extname(f).toLowerCase()))
       .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))

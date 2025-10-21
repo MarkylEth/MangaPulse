@@ -1,3 +1,4 @@
+// next.config.mjs
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: { turbo: {} },
@@ -24,9 +25,14 @@ const nextConfig = {
 
   async redirects() {
     return [
-      { source: "/team", destination: "/teams", permanent: false },
-      { source: "/team/:slug", destination: "/teams/:slug", permanent: false },
-      { source: "/team/:slug/:path*", destination: "/teams/:slug/:path*", permanent: false },
+      // алиасы команд
+      { source: '/team', destination: '/teams', permanent: false },
+      { source: '/team/:slug', destination: '/teams/:slug', permanent: false },
+      { source: '/team/:slug/:path*', destination: '/teams/:slug/:path*', permanent: false },
+
+      // алиасы логина
+      { source: '/signin', destination: '/login', permanent: true },
+      { source: '/auth/login', destination: '/login', permanent: true },
     ];
   },
 };

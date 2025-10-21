@@ -1,140 +1,82 @@
 // lib/mail.ts
-import nodemailer from 'nodemailer';
-import type SMTPTransport from 'nodemailer/lib/smtp-transport';
-import { MailerSend, EmailParams, Sender, Recipient } from 'mailersend';
+import { sendEmailResend } from '@/lib/resend';
+import { getVerificationEmailHtml, getVerificationEmailText } from '@/lib/email-templates';
 
-type Ok = { ok: true; id?: string };
-type Err = { ok: false; error: any };
-type Result = Ok | Err;
+type Ok = { ok: true; provider: 'resend' };
+type Fail = { ok: false; provider: 'resend'; error: string };
 
-// Провайдер: smtp | mailersend_api
-const provider = (
-  process.env.EMAIL_PROVIDER ||
-  (process.env.MAILERSEND_API_TOKEN ? 'mailersend_api' : 'smtp')
-).toLowerCase();
-
-const MAIL_DEBUG =
-  String(process.env.MAIL_DEBUG ?? '').toLowerCase() === 'true' ||
-  process.env.MAIL_DEBUG === '1';
-
-/* ================= SMTP ================= */
-
-function smtpTransport() {
-  const host = process.env.SMTP_HOST!;
-  const port = Number(process.env.SMTP_PORT ?? 587);
-  const secure = String(process.env.SMTP_SECURE ?? 'false') === 'true'; // 465 -> true, 587/2525 -> false
-  const user = process.env.SMTP_USER!;
-  const pass = process.env.SMTP_PASS!;
-
-  const opts: SMTPTransport.Options = {
-    host,
-    port,
-    secure,                 // 465 true; 587/2525 false (STARTTLS)
-    auth: { user, pass },
-    requireTLS: !secure,    // просим STARTTLS, если не secure
-    authMethod: 'PLAIN',    // для MailerSend надёжнее PLAIN/LOGIN; используем PLAIN
-    logger: MAIL_DEBUG,
-    debug: MAIL_DEBUG,
-    connectionTimeout: 20_000,
-  };
-
-  return nodemailer.createTransport(opts);
+/**
+ * Проверка готовности SMTP (для совместимости с существующим кодом)
+ * Resend не требует проверки транспорта
+ */
+export async function verifySmtp(): Promise<Ok> {
+  return { ok: true, provider: 'resend' };
 }
 
-function smtpFrom() {
-  // Если задан красивый From — берём его; иначе используем SMTP_USER
-  return process.env.SMTP_FROM || process.env.SMTP_USER!;
-}
-
-/* ================= MailerSend API ================= */
-
-const ms = process.env.MAILERSEND_API_TOKEN
-  ? new MailerSend({ apiKey: process.env.MAILERSEND_API_TOKEN! })
-  : null;
-
-const msFromEmail = process.env.MAILERSEND_FROM_EMAIL || '';
-const msFromName = process.env.MAILERSEND_FROM_NAME || 'MangaPulse';
-
-/* ================= Public API ================= */
-
-export async function verifySmtp(): Promise<Ok | Err> {
-  if (provider === 'mailersend_api') return { ok: true };
-  try {
-    await smtpTransport().verify();
-    return { ok: true };
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? String(e) };
-  }
-}
-
+/**
+ * Отправка письма с подтверждением email
+ */
 export async function sendVerificationEmail(
   to: string,
   link: string,
   mode: 'signup' | 'signin' = 'signup'
-): Promise<Result> {
-  const subject =
-    mode === 'signup' ? 'Подтверждение регистрации' : 'Ссылка для входа';
-  const html = `
-    <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif">
-      <h2>${subject}</h2>
-      <p>Перейдите по ссылке для подтверждения:</p>
-      <p><a href="${link}">${link}</a></p>
-    </div>`;
-  const text = `${subject}\n${link}`;
-
-  // === MailerSend HTTP API ===
-  if (provider === 'mailersend_api' && ms) {
-    try {
-      const params = new EmailParams()
-        .setFrom(new Sender(msFromEmail, msFromName))
-        .setTo([new Recipient(to, '')])
-        .setSubject(subject)
-        .setHtml(html)
-        .setText(text);
-
-      const res = await ms.email.send(params);
-      return { ok: true, id: (res as any)?.messageId };
-    } catch (e: any) {
-      // Аккуратно вытащим детали из ответа SDK
-      let details: any;
-      try {
-        if (e?.response?.json) details = await e.response.json();
-        else if (e?.response?.text) {
-          const t = await e.response.text();
-          try { details = JSON.parse(t); } catch { details = t; }
-        }
-      } catch {}
-      return {
-        ok: false,
-        error: {
-          code: e?.name || e?.code || 'MAILERSEND_ERROR',
-          message: e?.message,
-          statusCode: e?.statusCode || e?.response?.status,
-          details, // тут будут validation/allowed-recipients и т.п.
-        },
-      };
-    }
-  }
-
-  // === SMTP ===
+): Promise<Ok | Fail> {
   try {
-    const info = await smtpTransport().sendMail({
-      from: smtpFrom(),
+    const subject = mode === 'signup' 
+      ? 'Подтверждение регистрации на MangaPulse' 
+      : 'Подтверждение входа на MangaPulse';
+
+    await sendEmailResend({
       to,
       subject,
-      html,
-      text,
+      html: getVerificationEmailHtml(link, mode),
+      text: getVerificationEmailText(link, mode), // Опциональный text fallback
     });
-    return { ok: true, id: info.messageId };
+
+    return { ok: true, provider: 'resend' };
   } catch (e: any) {
-    // например: 535 Authentication failed
-    return {
-      ok: false,
-      error: {
-        code: e?.code || 'SMTP_ERROR',
-        message: e?.message ?? String(e),
-        response: e?.response,
-      },
+    console.error('[sendVerificationEmail] Error:', e);
+    return { 
+      ok: false, 
+      provider: 'resend', 
+      error: e?.message || 'send_failed' 
+    };
+  }
+}
+
+/**
+ * Отправка письма сброса пароля (для будущей реализации)
+ */
+export async function sendPasswordResetEmail(
+  to: string,
+  resetLink: string
+): Promise<Ok | Fail> {
+  try {
+    await sendEmailResend({
+      to,
+      subject: 'Сброс пароля на MangaPulse',
+      html: `
+        <div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+          <h2>Сброс пароля</h2>
+          <p>Вы запросили сброс пароля. Нажмите кнопку ниже:</p>
+          <p>
+            <a href="${resetLink}" 
+               style="display:inline-block;padding:12px 24px;background:#3b82f6;color:white;text-decoration:none;border-radius:8px;">
+              Сбросить пароль
+            </a>
+          </p>
+          <p style="color:#666;font-size:14px;">Ссылка действительна 1 час.</p>
+          <p style="color:#666;font-size:14px;">Если вы не запрашивали сброс пароля, проигнорируйте это письмо.</p>
+        </div>
+      `,
+    });
+
+    return { ok: true, provider: 'resend' };
+  } catch (e: any) {
+    return { 
+      ok: false, 
+      provider: 'resend', 
+      error: e?.message || 'send_failed' 
     };
   }
 }

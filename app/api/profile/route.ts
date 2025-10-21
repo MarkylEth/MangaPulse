@@ -21,7 +21,7 @@ const baseFrom = (email: string, nickname?: string | null) =>
     .slice(0, 20) || 'user';
 
 function nextCandidate(base: string) {
-  const n = Math.floor(Math.random() * 10000); // 0000..9999
+  const n = Math.floor(Math.random() * 10000);
   return `${base}${n.toString().padStart(4, '0')}`;
 }
 
@@ -33,9 +33,7 @@ async function usernameExists(uname: string) {
   return !!rows[0]?.exists;
 }
 
-// создадим недостающие вещи, но под ТВОЮ схему (id uuid PK + username unique)
 async function ensureProfilesBasics() {
-  // таблица уже есть — create if not exists безопасен
   await query(`
     create table if not exists public.profiles(
       id uuid primary key,
@@ -56,14 +54,13 @@ async function ensureProfilesBasics() {
     );
   `);
 
-  // индекс уникальности, если вдруг раньше не ставили
   await query(`create unique index if not exists profiles_username_key on public.profiles(username)`);
 
-  // триггер на updated_at — необязательно, но удобно
   await query(`
     create or replace function public.trg_touch_updated_at() returns trigger as $$
     begin new.updated_at = now(); return new; end; $$ language plpgsql;
   `);
+  
   await query(`
     do $$
     begin
@@ -85,7 +82,6 @@ export async function GET() {
 
     await ensureProfilesBasics();
 
-    // 1) если профиль уже есть по id — вернуть
     {
       const r = await query<{ id: string; username: string | null }>(
         `select id, username from public.profiles where id = $1 limit 1`,
@@ -93,7 +89,7 @@ export async function GET() {
       );
       const row = r.rows[0];
       if (row?.id) {
-        const nickname = row.username || baseFrom(user.email, user.nickname);
+        const nickname = row.username || baseFrom(user.email || '', user.nickname);
         return NextResponse.json({
           ok: true,
           user: { id: user.id, email: user.email, registered_at: user.created_at },
@@ -102,8 +98,7 @@ export async function GET() {
       }
     }
 
-    // 2) профиля нет — создаём с уникальным username
-    const base = baseFrom(user.email, user.nickname);
+    const base = baseFrom(user.email || '', user.nickname);
     let candidate = base;
 
     if (await usernameExists(candidate)) {
@@ -119,7 +114,6 @@ export async function GET() {
       }
     }
 
-    // upsert по id, с защитой от гонки по username
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         await query(
@@ -135,7 +129,6 @@ export async function GET() {
         break;
       } catch (e: any) {
         if (e?.code === '23505') {
-          // конфликт по уникальному username — подберём новый и ретраим
           candidate = nextCandidate(base);
           continue;
         }
@@ -158,7 +151,8 @@ export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json();
     const {
-      id, // ОБЯЗАТЕЛЕН
+      id,
+      username,
       full_name,
       avatar_url,
       bio,
@@ -171,50 +165,105 @@ export async function PATCH(req: NextRequest) {
     } = body || {};
 
     if (!id) {
-      return NextResponse.json({ ok: false, error: 'missing id' }, { status: 400 });
+      return NextResponse.json({ ok: false, error: 'missing_id' }, { status: 400 });
     }
 
-    // нормализуем массив
-    const fav = Array.isArray(favorite_genres) ? favorite_genres : [];
+    // ✅ ТОЛЬКО локальная валидация формата (без запроса в БД)
+    if (username !== undefined) {
+      if (typeof username !== 'string' || !/^[a-z0-9_]{3,20}$/.test(username)) {
+        return NextResponse.json({
+          ok: false,
+          error: 'invalid_username',
+          message: 'Username must be 3-20 characters, lowercase letters, numbers, and underscores only'
+        }, { status: 400 });
+      }
+    }
 
-    const sql = `
-      update public.profiles
-      set
-        full_name = $2,
-        avatar_url = $3,
-        bio = $4,
-        banner_url = $5,
-        favorite_genres = $6::text[],
-        telegram = $7,
-        x_url = $8,
-        vk_url = $9,
-        discord_url = $10,
-        updated_at = now()
-      where id = $1
-      returning id, username, full_name, avatar_url, bio, banner_url,
-                favorite_genres, telegram, x_url, vk_url, discord_url,
-                created_at, updated_at
-    `;
-    const params = [
-      id,
-      full_name ?? null,
-      avatar_url ?? null,
-      bio ?? null,
-      banner_url ?? null,
-      fav,
-      telegram ?? null,
-      x_url ?? null,
-      vk_url ?? null,
-      discord_url ?? null,
-    ];
+    // Нормализация массива жанров
+    const fav: string[] = Array.isArray(favorite_genres) ? favorite_genres : [];
+
+    // ✅ ОБНОВЛЯЕМ СРАЗУ — база сама проверит unique constraint
+    const sql =
+      username !== undefined
+        ? `
+          UPDATE public.profiles
+          SET
+            username = $2,
+            full_name = $3,
+            avatar_url = $4,
+            bio = $5,
+            banner_url = $6,
+            favorite_genres = $7::text[],
+            telegram = $8,
+            x_url = $9,
+            vk_url = $10,
+            discord_url = $11,
+            updated_at = now()
+          WHERE id = $1
+          RETURNING id, username, full_name, avatar_url, bio, banner_url,
+                    favorite_genres, telegram, x_url, vk_url, discord_url,
+                    created_at, updated_at
+        `
+        : `
+          UPDATE public.profiles
+          SET
+            full_name = $2,
+            avatar_url = $3,
+            bio = $4,
+            banner_url = $5,
+            favorite_genres = $6::text[],
+            telegram = $7,
+            x_url = $8,
+            vk_url = $9,
+            discord_url = $10,
+            updated_at = now()
+          WHERE id = $1
+          RETURNING id, username, full_name, avatar_url, bio, banner_url,
+                    favorite_genres, telegram, x_url, vk_url, discord_url,
+                    created_at, updated_at
+        `;
+
+    const params =
+      username !== undefined
+        ? [id, username, full_name ?? null, avatar_url ?? null, bio ?? null, banner_url ?? null,
+           fav, telegram ?? null, x_url ?? null, vk_url ?? null, discord_url ?? null]
+        : [id, full_name ?? null, avatar_url ?? null, bio ?? null, banner_url ?? null,
+           fav, telegram ?? null, x_url ?? null, vk_url ?? null, discord_url ?? null];
 
     const res = await query(sql, params);
+
     if (res.rowCount === 0) {
-      return NextResponse.json({ ok: false, error: 'profile_not_found' }, { status: 404 });
+      return NextResponse.json({ 
+        ok: false, 
+        error: 'profile_not_found' 
+      }, { status: 404 });
     }
-    return NextResponse.json({ ok: true, profile: res.rows[0] });
+
+    return NextResponse.json({
+      ok: true,
+      data: { profile: res.rows[0] },
+    });
+
   } catch (e: any) {
-    console.error('[PATCH /api/profile] ', e?.message || e);
-    return NextResponse.json({ ok: false, error: 'server_error' }, { status: 500 });
+    console.error('[PATCH /api/profile]', e?.message || e);
+
+    // ✅ ЛОВИМ UNIQUE VIOLATION (код ошибки PostgreSQL 23505)
+    if (e?.code === '23505') {
+      // Проверяем, что это именно username constraint
+      if (e?.constraint === 'profiles_username_key' || e?.detail?.includes('username')) {
+        return NextResponse.json({
+          ok: false,
+          error: 'username_taken',
+          message: 'This username is already taken'
+        }, { status: 409 });
+      }
+    }
+
+    // Остальные ошибки
+    return NextResponse.json({
+      ok: false,
+      error: 'server_error',
+      message: e?.message ?? 'unknown'
+    }, { status: 500 });
   }
 }

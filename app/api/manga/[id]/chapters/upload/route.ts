@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { requireUploader } from '@/lib/auth/route-guards';
 import { cookies } from 'next/headers';
+import { SESSION_COOKIE } from '@/lib/auth/config';
 
 const allowed = ['http://localhost:3000','http://25.46.32.16:3008'];
 function cors(req: Request) {
@@ -25,10 +26,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   // --- ВРЕМЕННАЯ диагностика, не палит секреты ---
   const jar = await cookies();
+  const hasSessionCookie = !!jar.get(SESSION_COOKIE)?.value;
   const dbg = {
     origin: req.headers.get('origin') ?? null,
     hasApiKey: !!req.headers.get('x-api-key'),
-    hasSessionCookie: !!jar.get(process.env.SESSION_COOKIE_NAME ?? 'session')?.value,
+    hasSessionCookie,
     envHasAdminKey: !!process.env.ADMIN_UPLOAD_KEY,
     nodeEnv: process.env.NODE_ENV,
   };

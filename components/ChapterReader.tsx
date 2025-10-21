@@ -24,7 +24,8 @@ import {
   Pin,
   PinOff,
   ChevronDown,
-  ChevronRight,
+  Bookmark,
+  BookmarkCheck,
 } from 'lucide-react';
 
 /* =================== Types =================== */
@@ -55,8 +56,8 @@ type Props =
     })
   | (BaseReaderProps & {
       chapterId?: never;
-      mangaId: number | string;
-      vol: number | string | 'none';
+      mangaId: number | string;             // может быть "21-ichinoseke-no-taizai"
+      vol: number | string | 'none';        // том из URL
       chapter: number | string;
       page?: number | string;
     });
@@ -97,6 +98,24 @@ function pickUserId(j: any): string | null {
   return cand != null ? String(cand) : null;
 }
 
+// --- helpers для построения ссылок следующей главы ---
+function isNoneLike(v: any) {
+  const s = String(v ?? '').trim().toLowerCase();
+  return s === '' || s === 'none' || s === 'null' || s === 'undefined';
+}
+function pickVolForUrl(nextVol: any, currentVolFromUrl: any) {
+  const n = String(nextVol ?? '').trim();
+  if (n && !isNoneLike(n)) return n;                 // у следующей главы есть явный том
+  const c = String(currentVolFromUrl ?? '').trim();
+  if (c && !isNoneLike(c)) return c;                 // иначе — берём текущий том из URL
+  return 'none';                                     // крайний случай
+}
+function buildChapterUrl(midForUrl: string, volForUrl: string, ch: string | number, page = 1) {
+  // Всегда оставляем сегмент тома /v/<vol>
+  return `/title/${midForUrl}/v/${encodeURIComponent(volForUrl)}/c/${encodeURIComponent(ch)}/p/${page}`;
+}
+const numId = (idOrSlug: string) => (idOrSlug.match(/\d+/)?.[0] ?? idOrSlug);
+
 /* =================== Component =================== */
 export default function ChapterReader(props: Props) {
   const pathname = usePathname();
@@ -105,7 +124,6 @@ export default function ChapterReader(props: Props) {
   /* ---------- Anchor to scroll top of reader ---------- */
   const topRef = useRef<HTMLDivElement | null>(null);
   const scrollToReaderTop = useCallback(() => {
-    // Скроллим к началу блока ридера (плавно)
     if (topRef.current) {
       topRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } else {
@@ -116,17 +134,21 @@ export default function ChapterReader(props: Props) {
   /* ---------- Params ---------- */
   const byId = 'chapterId' in props && props.chapterId !== undefined;
   const chapterId = byId ? String((props as any).chapterId) : null;
-  const mangaId   = !byId ? String((props as any).mangaId) : null;
-  const vol       = !byId ? String((props as any).vol) : null;
+  const mangaId   = !byId ? String((props as any).mangaId) : null; // slug или число
+  const vol       = !byId ? String((props as any).vol) : null;     // том из URL
   const chapter   = !byId ? String((props as any).chapter) : null;
   const pageParam = !byId ? String((props as any).page ?? '1') : '1';
 
+  // API всегда надёжнее дёргать по числовому id
+  const mangaIdForApi = useMemo(() => (mangaId ? numId(String(mangaId)) : null), [mangaId]);
+
   const pagesUrl = useMemo(() => {
-    if (byId && chapterId) return `/api/reader/chapter/${encodeURIComponent(chapterId)}/pages`;
-    if (!byId && mangaId && vol != null && chapter != null)
-      return `/api/reader/${encodeURIComponent(mangaId)}/volume/${encodeURIComponent(vol)}/chapter/${encodeURIComponent(chapter)}/pages`;
+    if (byId && chapterId)
+      return `/api/reader/chapter/${encodeURIComponent(chapterId)}/pages`;
+    if (!byId && mangaIdForApi && vol != null && chapter != null)
+      return `/api/reader/${encodeURIComponent(mangaIdForApi)}/volume/${encodeURIComponent(vol)}/chapters/${encodeURIComponent(chapter)}/pages`;
     return '';
-  }, [byId, chapterId, mangaId, vol, chapter]);
+  }, [byId, chapterId, mangaIdForApi, vol, chapter]);
 
   /* ---------- State ---------- */
   const [pages, setPages] = useState<Page[]>([]);
@@ -152,7 +174,6 @@ export default function ChapterReader(props: Props) {
   useEffect(() => {
     const n = Math.max(1, Number(pageParam || 1)) - 1;
     setIndex(n);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageParam]);
 
   /* ---------- Load pages ---------- */
@@ -217,72 +238,151 @@ export default function ChapterReader(props: Props) {
   /* ---------- Meta / next chapter ---------- */
   useEffect(() => {
     let cancel = false;
+
+    const pick = {
+      vol: (o: any) =>
+        o?.vol_number ?? o?.volume_number ?? o?.volume_index ?? o?.vol ?? o?.volume ?? null,
+      ch: (o: any) =>
+        o?.chapter_number ?? o?.chapter ?? o?.ch ?? o?.number ?? null,
+    };
+
+    const fetchJson = async (url: string) => {
+      try {
+        const r = await fetch(url, { cache: 'no-store' });
+        if (!r.ok) return null;
+        return await r.json();
+      } catch {
+        return null;
+      }
+    };
+
+    // если у следующей главы нет тома в списке, пробуем взять его из /api/chapters/:id
+    const resolveVolViaChapterId = async (chapterId: any) => {
+      if (!chapterId) return null;
+      const j = await fetchJson(`/api/chapters/${encodeURIComponent(chapterId)}`);
+      const v = pick.vol(j?.item ?? null);
+      return v == null ? null : String(v);
+    };
+
+    // Находит следующую главу ТОЛЬКО по номеру (игнорируем том), но в URL том сохраняем/уточняем.
+    const findNextChapterFromList = async (
+      midForApi: string,           // числовой id для API
+      currentCh: string,           // номер текущей главы
+      currentVolFromUrl: string,   // ТЕКУЩИЙ том из URL (например "4")
+      midForUrl?: string           // что показывать в URL (slug "21-xxx" или просто "21")
+    ) => {
+      const j = await fetchJson(`/api/manga/${midForApi}/chapters?limit=500`);
+      if (!j || !j.items) return null;
+
+      const chapters = j.items
+        .map((item: any) => {
+          const rawVol = pick.vol(item);
+          const ch = pick.ch(item);
+          if (ch == null) return null;
+          return {
+            vol: rawVol == null ? null : String(rawVol),
+            ch: String(ch),
+            id: item.id,
+          };
+        })
+        .filter(Boolean) as { vol: string | null; ch: string; id: any }[];
+
+      if (!chapters.length) return null;
+
+      // Сортируем только по номеру главы
+      chapters.sort((a, b) => Number(a.ch) - Number(b.ch));
+
+      const currentChNum = Number(currentCh);
+      const currentIndex = chapters.findIndex((c) => Number(c.ch) === currentChNum);
+
+      if (currentIndex >= 0 && currentIndex < chapters.length - 1) {
+        const next = chapters[currentIndex + 1];
+
+        // если у next.vol нет значения — дёрнем детальную инфу по id главы
+        let nextVol = next.vol;
+        if (nextVol == null || isNoneLike(nextVol)) {
+          const v = await resolveVolViaChapterId(next.id);
+          if (v != null && !isNoneLike(v)) nextVol = v;
+        }
+
+        const volForUrl = pickVolForUrl(nextVol, currentVolFromUrl);
+        const midUrl = midForUrl ?? midForApi;
+        return buildChapterUrl(midUrl, volForUrl, next.ch, 1);
+      }
+      return null;
+    };
+
     (async () => {
       try {
         if (byId && chapterId) {
-          const r = await fetch(`/api/chapters/${chapterId}`, { cache: 'no-store' });
+          // Загружаем метаданные текущей главы по id
+          const r = await fetch(`/api/chapters/${encodeURIComponent(chapterId)}`, { cache: 'no-store' });
           const j = await r.json().catch(() => ({}));
-          const ch: ChapterMeta = j?.item ?? {};
-          if (!cancel) setMeta(ch);
+          const chMeta: ChapterMeta = j?.item ?? {};
+          if (!cancel) setMeta(chMeta);
 
-          if (ch?.manga_id != null && ch?.chapter_number != null) {
-            const n = await fetch(
-              `/api/manga/${ch.manga_id}/chapters/next?after=${encodeURIComponent(String(ch.chapter_number))}`,
-              { cache: 'no-store' },
+          const midForApi = String(chMeta?.manga_id ?? '');
+          const curCh     = String(chMeta?.chapter_number ?? '');
+          // текущий том для URL — сначала из props.vol (если мы на маршруте с томом), иначе из meta
+          const currentVolFromUrl = String((vol ?? chMeta?.vol ?? 'none'));
+
+          if (midForApi && curCh) {
+            const href = await findNextChapterFromList(
+              numId(midForApi),
+              curCh,
+              currentVolFromUrl,
+              (mangaId ?? midForApi) as string  // в URL сохраняем исходный slug/id
             );
-            const nj = await n.json().catch(() => ({}));
-            if (!cancel && nj?.item?.id) setNextHref(`/manga/${ch.manga_id}/chapter/${nj.item.id}`);
-            else if (!cancel) setNextHref(null);
+            if (!cancel) setNextHref(href);
+          } else if (!cancel) {
+            setNextHref(null);
           }
           return;
         }
 
-        if (!byId && mangaId && vol != null && chapter != null) {
+        // Режим без id: у нас есть mangaId + vol + chapter
+        if (!byId && mangaId && chapter != null) {
           if (!cancel) setMeta({ manga_id: mangaId, vol, chapter_number: chapter });
 
-          const r = await fetch(`/api/reader/${mangaId}/volume/${vol}/chapters`, { cache: 'no-store' });
-          const j = await r.json().catch(() => ({}));
-          const list: { chapter: string }[] = Array.isArray(j?.items) ? j.items : [];
-
-          const current = String(chapter);
-          const idx = list.findIndex((x) => String(x.chapter) === current);
-          if (!cancel) {
-            if (idx >= 0 && idx + 1 < list.length) {
-              const n = String(list[idx + 1].chapter);
-              setNextHref(`/manga/${mangaId}/v/${vol}/c/${n}/p/1`);
-            } else setNextHref(null);
-          }
+          const href = await findNextChapterFromList(
+            String(mangaIdForApi!),         // для API — числовой id
+            String(chapter),
+            String(vol ?? 'none'),
+            String(mangaId)                 // что оставить в адресе (число или slug)
+          );
+          if (!cancel) setNextHref(href);
         }
-      } catch {}
+      } catch {
+        if (!cancel) setNextHref(null);
+      }
     })();
-    return () => { cancel = true; };
-  }, [byId, chapterId, mangaId, vol, chapter]);
 
-  /* ---------- Translator teams (badge) ---------- */
+    return () => { cancel = true; };
+  }, [byId, chapterId, mangaId, mangaIdForApi, vol, chapter]);
+
+  /* ---------- Translator teams ---------- */
   const [chapterTeams, setChapterTeams] = useState<TeamInfo[]>([]);
+
+  const effectiveChapterId = useMemo(() => {
+    if (byId && chapterId) return Number(chapterId);
+    return Number(pages[0]?.chapter_id || 0);
+  }, [byId, chapterId, pages]);
+
   useEffect(() => {
     let abort = false;
     (async () => {
+      const cid = effectiveChapterId;
+      if (!cid) { setChapterTeams([]); return; }
       try {
-        if (byId && chapterId) {
-          const r1 = await fetch(`/api/chapters/${chapterId}/teams`, { cache: 'no-store' });
-          if (r1.ok) {
-            const j1 = await r1.json().catch(() => ({}));
-            if (!abort && (Array.isArray(j1?.items) || Array.isArray(j1?.teams))) {
-              setChapterTeams((j1.items ?? j1.teams) as TeamInfo[]);
-              return;
-            }
-          }
-        }
-        const mid = (meta?.manga_id ?? mangaId) as string | null;
-        if (!mid) return;
-        const r2 = await fetch(`/api/manga/${mid}/teams`, { cache: 'no-store' });
-        const j2 = await r2.json().catch(() => ({}));
-        if (!abort) setChapterTeams((j2?.items ?? j2?.teams ?? []) as TeamInfo[]);
-      } catch {}
+        const r = await fetch(`/api/chapters/${cid}/teams`, { cache: 'no-store' });
+        const j = await r.json().catch(() => ({}));
+        if (!abort) setChapterTeams((j?.items ?? []) as TeamInfo[]);
+      } catch {
+        if (!abort) setChapterTeams([]);
+      }
     })();
     return () => { abort = true; };
-  }, [byId, chapterId, mangaId, meta?.manga_id]);
+  }, [effectiveChapterId]);
 
   /* ---------- Comments ---------- */
   const [pageComments, setPageComments] = useState<PageComment[]>([]);
@@ -307,12 +407,9 @@ export default function ChapterReader(props: Props) {
     setLikedByMe(j?.likedByMe ?? {});
   }, [userId]);
 
-  const chapterIdForLike = useMemo(() => {
-    if (byId && chapterId) return Number(chapterId);
-    return Number(pages[0]?.chapter_id || 0);
-  }, [byId, chapterId, pages]);
+  const chapterIdForLike = useMemo(() => effectiveChapterId, [effectiveChapterId]);
 
-  // Включаем «чёрный ридер» (фикс цвета на время монтирования)
+  // Включаем «чёрный ридер»
   useEffect(() => {
     const html = document.documentElement;
     const body = document.body;
@@ -324,6 +421,7 @@ export default function ChapterReader(props: Props) {
     };
   }, []);
 
+  // Загрузка комментариев при смене страницы
   useEffect(() => {
     const p = pages[index];
     if (!p) { setPageComments([]); return; }
@@ -416,7 +514,7 @@ export default function ChapterReader(props: Props) {
     setPageComments((prev) => prev.filter((c) => c.id !== id && c.parent_id !== id));
   }
 
-  /* ---------- Page picker hooks ---------- */
+  /* ---------- Page picker ---------- */
   const [pickerOpen, setPickerOpen] = useState(false);
   const pagePickerRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -441,18 +539,27 @@ export default function ChapterReader(props: Props) {
   }, [pickerOpen]);
 
   /* ---------- Navigation ---------- */
-  const prevPage = useCallback(() => setIndex((i) => Math.max(0, i - 1)), []);
+  const prevPage = useCallback(() => {
+    setIndex((i) => Math.max(0, i - 1));
+    scrollToReaderTop();
+  }, [scrollToReaderTop]);
+
   const goNext = useCallback(() => {
-    setIndex((i) => {
-      if (i + 1 < pages.length) return i + 1;
-      if (nextHref) router.push(nextHref);
-      else {
-        const mid = (meta?.manga_id ?? mangaId) as string | null;
-        router.push(mid ? `/manga/${mid}` : '/');
-      }
-      return i;
-    });
-  }, [pages.length, nextHref, router, meta?.manga_id, mangaId]);
+    // Внутри текущей главы
+    if (index + 1 < pages.length) {
+      setIndex((i) => i + 1);
+      scrollToReaderTop();
+      return;
+    }
+    // Переход к следующей главе (если есть)
+    if (nextHref) {
+      router.push(nextHref);
+      return;
+    }
+    // Иначе — на страницу тайтла
+    const mid = (meta?.manga_id ?? mangaId) as string | null;
+    router.push(mid ? `/title/${mid}` : '/');
+  }, [index, pages.length, nextHref, meta?.manga_id, mangaId, router, scrollToReaderTop]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -466,6 +573,63 @@ export default function ChapterReader(props: Props) {
   /* ---------- Sort mode ---------- */
   const [sortMode, setSortMode] = useState<SortMode>('new');
 
+  /* ---------- Bookmark ---------- */
+  const effectiveMangaId = useMemo(() => {
+    if (!byId) return Number(mangaId ?? meta?.manga_id ?? 0);
+    return Number(meta?.manga_id ?? 0);
+  }, [byId, mangaId, meta?.manga_id]);
+
+  const [bmHas, setBmHas] = useState(false);
+  const [bmPage, setBmPage] = useState<number | null>(null);
+  const [bmBusy, setBmBusy] = useState(false);
+
+  useEffect(() => {
+    const cid = effectiveChapterId;
+    if (!cid || !userId) { setBmHas(false); setBmPage(null); return; }
+    (async () => {
+      try {
+        const r = await fetch(`/api/reader/bookmarks?chapter_id=${cid}`, { cache: 'no-store', credentials: 'include' });
+        const j = r.ok ? await r.json() : null;
+        setBmHas(!!j?.has);
+        setBmPage(j?.page ?? null);
+      } catch {
+        setBmHas(false);
+        setBmPage(null);
+      }
+    })();
+  }, [userId, effectiveChapterId]);
+
+  const setOrToggleBookmark = useCallback(async () => {
+    if (!userId) return alert('Войдите, чтобы ставить закладки');
+    const cid = effectiveChapterId;
+    const mid = effectiveMangaId;
+    const currentPage = index + 1;
+    if (!cid || !mid) return;
+
+    setBmBusy(true);
+    try {
+      if (bmHas && bmPage === currentPage) {
+        await fetch('/api/reader/bookmarks', {
+          method: 'DELETE', credentials: 'include',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ chapter_id: cid })
+        });
+        setBmHas(false);
+        setBmPage(null);
+      } else {
+        await fetch('/api/reader/bookmarks', {
+          method: 'POST', credentials: 'include',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ manga_id: mid, chapter_id: cid, page: currentPage })
+        });
+        setBmHas(true);
+        setBmPage(currentPage);
+      }
+    } finally {
+      setBmBusy(false);
+    }
+  }, [userId, effectiveChapterId, effectiveMangaId, index, bmHas, bmPage]);
+
   /* ---------- Early returns ---------- */
   if (loading) return <div className="p-6 text-slate-400">Загрузка главы…</div>;
   if (error) return <div className="p-6 text-red-400">Ошибка: {error}</div>;
@@ -475,44 +639,26 @@ export default function ChapterReader(props: Props) {
   const current = pages[index];
   const pageToShow = index + 1;
 
-  /* ---------- Styles (Reader — фиксированный тёмный) ---------- */
+  /* ---------- Styles ---------- */
   const pageSurface = 'bg-black text-white border border-black';
   const commentSurface = 'bg-[#1f1f1f] text-white border border-[#1a1a1a]';
   const softOnComment = 'bg-[#262626] border-[#2f2f2f]';
   const pillBtn =
     'px-3 py-1.5 rounded-full bg-[#2a2a2a] border border-[#3a3a3a] shadow-sm hover:bg-[#333333] text-[#e5e7eb] focus-visible:outline-none focus-visible:ring-2 ring-white/10';
-  const toolbarBtn =
-    'px-3 py-1 rounded-md bg-[#2a2a2a] border border-[#3a3a3a] hover:bg-[#333333] text-[#e5e7eb] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 ring-white/10';
-  const editorBox = (enabled: boolean) =>
-    `min-h-[64px] rounded-lg p-3 outline-none bg-[#262626] text-[#e5e7eb] ${enabled ? '' : 'opacity-60'} focus-visible:ring-2 ring-white/10`;
   const sendBtn =
     'px-4 py-2 rounded-lg bg-[#2a2a2a] hover:bg-[#333333] text-[#e5e7eb] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 ring-white/20';
   const listItem =
-    'w-full rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] p-4 text-[#e5e7eb]';
+    'w/full rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] p-4 text-[#e5e7eb]';
   const replyBox = 'ml-6 mt-3 border-l border-[#2a2a2a] pl-4';
 
   /* ---------- Render ---------- */
   return (
     <>
       <div className="mx-auto max-w-5xl p-3 sm:p-6 space-y-6">
-        {/* якорь для скролла к началу */}
         <div ref={topRef} />
 
-        {/* Верхняя панель — только «Следующая» */}
-        <div className="mb-1 flex items-center justify-end">
-          {nextHref && (
-            <Link
-              href={nextHref}
-              className="px-3 py-2 inline-flex items-center gap-1 bg-slate-700 hover:bg-slate-600 rounded-lg text-white"
-            >
-              Следующая <ChevronRight className="w-4 h-4" />
-            </Link>
-          )}
-        </div>
-
-        {/* Картинка страницы — ЧЁРНАЯ ПОДЛОЖКА */}
+        {/* Картинка страницы */}
         <div className={`relative overflow-hidden rounded-xl ${pageSurface}`}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={current.url}
             alt={`page-${index + 1}`}
@@ -540,7 +686,6 @@ export default function ChapterReader(props: Props) {
 
             {pickerOpen && (
               <div className="absolute left-1/2 -translate-x-1/2 z-50 mt-2 w-[22rem] sm:w-[24rem] rounded-2xl border border-[#2a2a2a] shadow-2xl backdrop-blur bg-[#1f1f1f]/95">
-                {/* Только сетка страниц */}
                 <div className="max-h-72 overflow-y-auto px-3 py-3">
                   <div className="grid grid-cols-10 gap-1">
                     {pages.map((_, i) => {
@@ -572,66 +717,76 @@ export default function ChapterReader(props: Props) {
           </div>
         </div>
 
-        {/* Линия под пейджером / блок с бэджом команды и лайком */}
+        {/* Команды + лайк + закладка */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            {chapterTeams.length > 0 ? (
-              <Link
-                href={`/team/${chapterTeams[0]!.slug ?? chapterTeams[0]!.id}`}
-                className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 bg-white/5 border-white/10"
-                title="Команда перевода"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                {chapterTeams[0]?.avatar_url ? (
-                  <img src={chapterTeams[0]!.avatar_url!} alt="" className="h-6 w-6 rounded-full object-cover" />
-                ) : (
-                  <div className="h-6 w-6 rounded-full bg-white/10" />
-                )}
-                <span className="text-sm text-white">
-                  Перевод: <b>{chapterTeams[0]!.name ?? 'Команда'}</b>
-                </span>
-                {chapterTeams.length > 1 && <span className="text-xs text-white/70">+{chapterTeams.length - 1}</span>}
-              </Link>
+          <div className="flex-1">
+            {chapterTeams.length >= 1 ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {chapterTeams.map((t, idx) => (
+                  <Link
+                    key={t.id ?? `${t.slug}-${idx}`}
+                    href={`/team/${t.slug ?? t.id}`}
+                    className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 bg:white/5 border-white/10"
+                    title={t.name ?? 'Команда перевода'}
+                  >
+                    {t.avatar_url ? (
+                      <img src={t.avatar_url} alt="" className="h-6 w-6 rounded-full object-cover" />
+                    ) : (
+                      <div className="h-6 w-6 rounded-full bg-white/10" />
+                    )}
+                    <span className="text-sm text-white">{t.name ?? 'Команда'}</span>
+                    {t.verified ? (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/80">✔</span>
+                    ) : null}
+                  </Link>
+                ))}
+              </div>
             ) : (
-              <div
-                className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm bg-white/5 border-white/10 text-white"
-                title="Команда перевода"
-              >
+              <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 mt-0.5 text-sm bg-white/5 border-white/10 text-white">
                 <div className="h-6 w-6 rounded-full bg-white/10" />
                 Перевод: неизвестно
               </div>
             )}
           </div>
 
-          {/* Лайк — теперь такой же «пилл», как слева */}
-          {chapterIdForLike ? (
-            <div
-              className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 bg-white/5 border-white/10 text-white"
-              data-like-scope
+          <div className="flex items-center gap-2">
+            {chapterIdForLike ? (
+              <div
+                className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 bg-white/5 border-white/10 text-white"
+                data-like-scope
+              >
+                <ChapterLikeButton chapterId={chapterIdForLike} />
+              </div>
+            ) : null}
+
+            <button
+              onClick={setOrToggleBookmark}
+              disabled={bmBusy || !userId || !effectiveChapterId}
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-white hover:bg-white/10
+                ${bmHas ? 'bg-white/20 border-white/20' : 'bg-white/5 border-white/10'}`}
+              title={bmHas ? (bmPage ? `Закладка: стр. ${bmPage}` : 'Закладка установлена') : 'Поставить закладку на текущую страницу'}
             >
-              <ChapterLikeButton chapterId={chapterIdForLike} />
-            </div>
-          ) : null}
+              {bmHas ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
 
-        {/* ===== Комментарии: full-bleed фон ===== */}
+        {/* ===== Комментарии ===== */}
         <section className="relative">
           <div className="relative left-1/2 -translate-x-1/2 w-screen bg-[#1f1f1f]">
             <div className="mx-auto max-w-5xl px-3 sm:px-6 py-6">
               <div className={`w-full rounded-xl p-4 ${commentSurface}`}>
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <button onClick={() => document.execCommand('bold')} className={toolbarBtn} title="Жирный"><Bold className="w-4 h-4" /></button>
-                    <button onClick={() => document.execCommand('italic')} className={toolbarBtn} title="Курсив"><Italic className="w-4 h-4" /></button>
-                    <button onClick={() => document.execCommand('underline')} className={toolbarBtn} title="Подчеркнуть"><Underline className="w-4 h-4" /></button>
+                    <button onClick={() => document.execCommand('bold')} className={pillBtn.replace('rounded-full','rounded-md')} title="Жирный"><Bold className="w-4 h-4" /></button>
+                    <button onClick={() => document.execCommand('italic')} className={pillBtn.replace('rounded-full','rounded-md')} title="Курсив"><Italic className="w-4 h-4" /></button>
+                    <button onClick={() => document.execCommand('underline')} className={pillBtn.replace('rounded-full','rounded-md')} title="Подчеркнуть"><Underline className="w-4 h-4" /></button>
                     <button
                       onClick={() => {
                         const didWork = document.execCommand('strikeThrough');
-                        if (!didWork) {
-                          try { document.execCommand('strikethrough'); } catch {}
-                        }
+                        if (!didWork) { try { document.execCommand('strikethrough'); } catch {} }
                       }}
-                      className={toolbarBtn}
+                      className={pillBtn.replace('rounded-full','rounded-md')}
                       title="Зачеркнуть"
                     >
                       <Strikethrough className="w-4 h-4" />
@@ -664,7 +819,7 @@ export default function ChapterReader(props: Props) {
                     ref={editorRef}
                     contentEditable={!!userId}
                     suppressContentEditableWarning
-                    className={editorBox(!!userId)}
+                    className={`min-h-[64px] rounded-lg p-3 outline-none bg-[#262626] text-[#e5e7eb] ${!!userId ? '' : 'opacity-60'} focus-visible:ring-2 ring-white/10`}
                     onInput={() => {
                       const txt = editorRef.current?.textContent?.replace(/\u00a0/g, ' ').trim() ?? '';
                       setIsEmpty(txt.length === 0);
@@ -701,7 +856,7 @@ export default function ChapterReader(props: Props) {
                 </div>
               </div>
 
-              {/* Список */}
+              {/* Список комментариев */}
               <div className="mt-4 space-y-4">
                 {pageComments.filter(c => !c.parent_id).length === 0 && (
                   <div className="text-center text-sm text-[#9ca3af]">Пока нет комментариев к этой странице — будьте первым!</div>
@@ -739,10 +894,8 @@ export default function ChapterReader(props: Props) {
                       >
                         <header className="flex items-center gap-3">
                           {c.is_team_comment && c.team_id != null && teams[c.team_id]?.avatar_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
                             <img src={teams[c.team_id]!.avatar_url!} alt="" className="w-10 h-10 rounded-full object-cover" />
                           ) : c.user_id && profiles[c.user_id]?.avatar_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
                             <img src={profiles[c.user_id]!.avatar_url!} alt="" className="w-10 h-10 rounded-full object-cover" />
                           ) : (
                             <div className="w-10 h-10 rounded-full bg-white/10" />
@@ -779,10 +932,10 @@ export default function ChapterReader(props: Props) {
 
                         {editingId === c.id ? (
                           <div className="mt-2">
-                            <div ref={editRef} contentEditable suppressContentEditableWarning className={editorBox(true)} />
+                            <div ref={editRef} contentEditable suppressContentEditableWarning className="min-h-[64px] rounded-lg p-3 outline-none bg-[#262626] text-[#e5e7eb] focus-visible:ring-2 ring-white/10" />
                             <div className="mt-2 flex gap-2 justify-end">
                               <button onClick={() => saveEdit(c.id)} className={sendBtn}>Сохранить</button>
-                              <button onClick={() => { setEditingId(null); if (editRef.current) editRef.current.innerHTML = ''; }} className="px-4 py-2 rounded-lg border border-white/10 hover:bg-white/5">
+                              <button onClick={() => { setEditingId(null); if (editRef.current) (editRef.current as any).innerHTML = ''; }} className="px-4 py-2 rounded-lg border border-white/10 hover:bg-white/5">
                                 Отмена
                               </button>
                             </div>
@@ -802,9 +955,7 @@ export default function ChapterReader(props: Props) {
                                 return (
                                   <div
                                     key={r.id}
-                                    className={`rounded-lg p-3 ${
-                                      r.is_pinned ? 'bg-[#23272e] border border-[#39414f]' : 'bg-[#262626]'
-                                    }`}
+                                    className={`rounded-lg p-3 ${r.is_pinned ? 'bg-[#23272e] border border-[#39414f]' : 'bg-[#262626]'}`}
                                   >
                                     <div className="flex items-center gap-3">
                                       <div className="text-sm font-medium">{nameOf(r)}</div>
@@ -817,7 +968,7 @@ export default function ChapterReader(props: Props) {
                                         </button>
                                         {mine && (
                                           <>
-                                            <button onClick={() => startEdit(r.id, r.content)} className="inline-flex items-center gap-1 text-[11px] opacity-90 hover:opacity-100"><Pencil className="w-3 х-3" /> Редактировать</button>
+                                            <button onClick={() => startEdit(r.id, r.content)} className="inline-flex items-center gap-1 text-[11px] opacity-90 hover:opacity-100"><Pencil className="w-3 h-3" /> Редактировать</button>
                                             <button onClick={() => deleteComment(r.id)} className="inline-flex items-center gap-1 text-[11px] opacity-90 hover:opacity-100"><Trash2 className="w-3 h-3" /> Удалить</button>
                                           </>
                                         )}
@@ -825,10 +976,10 @@ export default function ChapterReader(props: Props) {
                                     </div>
                                     {editingId === r.id ? (
                                       <div className="mt-1">
-                                        <div ref={editRef} contentEditable suppressContentEditableWarning className={editorBox(true)} />
+                                        <div ref={editRef} contentEditable suppressContentEditableWarning className="min-h-[64px] rounded-lg p-3 outline-none bg-[#262626] text-[#e5e7eb] focus-visible:ring-2 ring-white/10" />
                                         <div className="mt-2 flex gap-2 justify-end">
                                           <button onClick={() => saveEdit(r.id)} className={sendBtn}>Сохранить</button>
-                                          <button onClick={() => { setEditingId(null); if (editRef.current) editRef.current.innerHTML = ''; }} className="px-4 py-2 rounded-lg border border-white/10 hover:bg-white/5">Отмена</button>
+                                          <button onClick={() => { setEditingId(null); if (editRef.current) (editRef.current as any).innerHTML = ''; }} className="px-4 py-2 rounded-lg border border-white/10 hover:bg-white/5">Отмена</button>
                                         </div>
                                       </div>
                                     ) : (
@@ -850,7 +1001,6 @@ export default function ChapterReader(props: Props) {
         </section>
       </div>
 
-      {/* --- Минимальные глобальные стили для лайк-кнопки внутри data-like-scope --- */}
       <style jsx global>{`
         [data-like-scope] { color: #ffffff !important; }
         [data-like-scope] svg { stroke: currentColor !important; }

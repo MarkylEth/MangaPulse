@@ -1,18 +1,18 @@
 // lib/auth/get-user.ts
 import { cookies } from 'next/headers';
-import { verifySession, SESSION_COOKIE } from './session';
+import { verifySession } from './session';              // только verify отсюда
+import { SESSION_COOKIE } from '@/lib/auth/config';     // ← имя куки берём из config
 import { query } from '@/lib/db';
 
-/** Возвращает { id, username, role, leaderTeamId } или null. Готово к Next 15 (await cookies()). */
+/** Возвращает { id, username, role, leaderTeamId } или null. */
 export async function getAuthUser() {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value ?? null;
-  const payload = await verifySession(token);
+  const payload = verifySession(token);                 // verifySession синхронный
   if (!payload?.sub) return null;
 
   const uid = String(payload.sub);
 
-  // username: подбираем наиболее вероятные поля
   const r = await query<{
     id: string;
     username?: string | null;
@@ -33,7 +33,6 @@ export async function getAuthUser() {
   const row = r.rows?.[0];
   if (!row) return null;
 
-  // лидерство команды (если есть такая схема — опционально)
   let leaderTeamId: number | null = null;
   try {
     const lr = await query<{ team_id: number }>(
@@ -53,4 +52,3 @@ export async function getAuthUser() {
     leaderTeamId,
   };
 }
-    

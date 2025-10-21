@@ -1,7 +1,7 @@
 // app/api/auth/google/callback/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { signSession, setSessionCookieOn } from '@/lib/auth/session';
+import { signSession, setSessionCookie } from '@/lib/auth/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -130,14 +130,16 @@ export async function GET(req: NextRequest) {
     await query('COMMIT');
 
     // 5) сессия и редирект
-    const token = await signSession({
+    const token = signSession({
+      // NB: если тип SessionPayload ограничивает только { sub, role? },
+      // расширь его или приведи тип, если хочешь включать email/name.
       sub: uid!,
-      email: me.email ?? null,
-      name: fullNameEn ?? null,
-    });
+      // email: me.email ?? null,
+      // name: fullNameEn ?? null,
+    } as any);
 
     const res = NextResponse.redirect(new URL(redirect_to || '/', url.origin));
-    setSessionCookieOn(res, token);
+    setSessionCookie(res, token);
     return res;
   } catch (e: any) {
     try { await query('ROLLBACK'); } catch {}

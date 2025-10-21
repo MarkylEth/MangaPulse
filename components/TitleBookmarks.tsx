@@ -1,5 +1,7 @@
+// components/TitleBookmarks.tsx
 'use client';
 
+import { libraryQueue } from '@/lib/libraryQueue';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, Clock, CheckCircle, Ban, Heart, Bookmark, ChevronDown, Info } from 'lucide-react';
 
@@ -8,13 +10,11 @@ export type LibStatus = 'planned' | 'reading' | 'completed' | 'dropped';
 export interface TitleBookmarksProps {
   mangaId: number;
   className?: string;
-  /** Принудительная тема, иначе возьмём из <html class="dark"> */
   theme?: 'dark' | 'light';
-  /** Если явно false — НЕ дёргаем /library (гость). */
-  loggedIn?: boolean; // <-- без дефолта! если undefined — пробуем загрузить личные данные
+  /** если явно false — считаем гостем и не дёргаем личные данные */
+  loggedIn?: boolean;
 }
 
-/* ======= локальная тема (без глобального контекста) ======= */
 function resolveTheme(explicit?: 'dark' | 'light'): 'dark' | 'light' {
   if (explicit) return explicit;
   if (typeof document !== 'undefined') {
@@ -30,13 +30,12 @@ type StatusOption = {
 };
 
 const STATUS_OPTIONS: StatusOption[] = [
-  { value: 'reading', label: 'Читаю', Icon: BookOpen },
-  { value: 'planned', label: 'В планах', Icon: Clock },
+  { value: 'reading',   label: 'Читаю',     Icon: BookOpen },
+  { value: 'planned',   label: 'В планах',  Icon: Clock },
   { value: 'completed', label: 'Прочитано', Icon: CheckCircle },
-  { value: 'dropped', label: 'Брошено', Icon: Ban },
+  { value: 'dropped',   label: 'Брошено',   Icon: Ban },
 ];
 
-type LibraryStats = { favorites?: number; reading?: number };
 type LibraryEntry = { manga_id: number; status: LibStatus | null; favorite: boolean };
 
 export default function TitleBookmarks({
@@ -48,59 +47,36 @@ export default function TitleBookmarks({
   const [mounted, setMounted] = useState(false);
   const theme = useMemo(() => resolveTheme(explicitTheme), [explicitTheme]);
 
-  // состояние
-  const [status, setStatus] = useState<LibStatus | null>(null);
-  const [fav, setFav] = useState(false);
+  const [status, setStatus]     = useState<LibStatus | null>(null);
+  const [fav, setFav]           = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [loggedIn, setLoggedIn] = useState<boolean | null>(null); // null до первого ответа
+  // saving оставляем, но UI на нём не завязываем (для возможной телеметрии/логики)
+  const [saving, setSaving]     = useState(false);
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
+
+  const [toast, setToast] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => setMounted(true), []);
 
-  // публичная агрегированная статистика
-  const [publicStats, setPublicStats] = useState<LibraryStats | null>(null);
+  /* ---- слегка более тёмные поверхности для светлой темы ---- */
+  const btnSurfaceLight = 'bg-slate-100 text-slate-900 ring-1 ring-slate-300/70 shadow-sm hover:bg-slate-200';
+  const btnSurfaceDark  = 'bg-slate-900/70 text-slate-100 ring-1 ring-white/10 backdrop-blur hover:bg-slate-800/70';
+  const baseBtn = theme === 'light' ? btnSurfaceLight : btnSurfaceDark;
 
-  // простой тост
-  const [toast, setToast] = useState<string | null>(null);
+  // «таблетка»-кнопка: без фокус-ореолов и спиннеров; лёгкая обратная связь при нажатии
+  const pill = (extra = '') =>
+    `inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors
+     focus:outline-none focus-visible:outline-none active:scale-[.99]
+     ${baseBtn} ${extra}`;
+
   const showToast = (msg: string) => {
     setToast(msg);
     window.clearTimeout((showToast as any)._t);
     (showToast as any)._t = window.setTimeout(() => setToast(null), 2200);
   };
 
-  useEffect(() => setMounted(true), []);
-
-  const baseBorder = theme === 'light' ? 'border-gray-300' : 'border-white/10';
-  const baseBg =
-    theme === 'light'
-      ? 'bg-white hover:bg-gray-100 text-gray-800'
-      : 'bg-gray-900/60 hover:bg-gray-800 text-white';
-  const pill = (extra = '') =>
-    `inline-flex items-center gap-2 rounded-xl border ${baseBorder} ${baseBg} px-3 py-2 text-sm ${extra}`;
-
-  // ====== Загрузка публичной статистики (one-shot guard для StrictMode) ======
-  const statsOnceRef = useRef<Record<number, boolean>>({});
-  useEffect(() => {
-    if (statsOnceRef.current[mangaId]) return;
-    statsOnceRef.current[mangaId] = true;
-
-    let stop = false;
-    (async () => {
-      try {
-        const r = await fetch(`/api/manga/${mangaId}/library-stats`, { cache: 'no-store' });
-        const j = await r.json().catch(() => ({}));
-        if (!stop) setPublicStats(j?.stats ?? null);
-      } catch {
-        if (!stop) setPublicStats(null);
-      }
-    })();
-
-    return () => {
-      stop = true;
-    };
-  }, [mangaId]);
-
-  // закрытие меню по клику вне
+  /* ---------- тихое закрытие меню по клику вне ---------- */
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (!menuRef.current) return;
@@ -110,12 +86,7 @@ export default function TitleBookmarks({
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [menuOpen]);
 
-  // Guard от двойного запроса в StrictMode (dev) для личной записи
-  const loadedKeyRef = useRef<Record<string, boolean>>({});
-
-  // Загрузка личной записи:
-  // - если loggedInProp === false — не трогаем API (гость)
-  // - если undefined/true — пробуем забрать /library
+  /* ---------- ЛИЧНАЯ ЗАПИСЬ: простая загрузка ---------- */
   useEffect(() => {
     let stop = false;
 
@@ -123,14 +94,8 @@ export default function TitleBookmarks({
       setLoggedIn(false);
       setStatus(null);
       setFav(false);
-      return () => {
-        stop = true;
-      };
+      return () => { stop = true; };
     }
-
-    const key = `${mangaId}:${String(loggedInProp)}`;
-    if (loadedKeyRef.current[key]) return;
-    loadedKeyRef.current[key] = true;
 
     (async () => {
       try {
@@ -143,110 +108,79 @@ export default function TitleBookmarks({
 
         if (res.status === 401) {
           setLoggedIn(false);
+          setStatus(null);
+          setFav(false);
           return;
         }
-        const j = await res.json().catch(() => ({}));
-        const item: LibraryEntry | null = j?.item ?? null;
+
+        const data = await res.json().catch(() => ({}));
+        const item: LibraryEntry | null = data?.item ?? null;
+
         setLoggedIn(true);
         if (item) {
           setStatus(item.status ?? null);
-          setFav(Boolean(item.favorite));
+          setFav(!!item.favorite);
         } else {
           setStatus(null);
           setFav(false);
         }
       } catch {
-        if (!stop) setLoggedIn(false);
+        if (!stop) {
+          setLoggedIn(false);
+          setStatus(null);
+          setFav(false);
+        }
       }
     })();
 
-    return () => {
-      stop = true;
-    };
+    return () => { stop = true; };
   }, [mangaId, loggedInProp]);
 
-  // действия
   const requireAuth = () => {
     if (loggedIn) return true;
     showToast('Войдите, чтобы пользоваться закладками.');
     return false;
   };
 
-  const refetchStats = async () => {
-    try {
-      const r = await fetch(`/api/manga/${mangaId}/library-stats`, { cache: 'no-store' });
-      const j = await r.json().catch(() => ({}));
-      setPublicStats(j?.stats ?? null);
-    } catch {}
-  };
+  /* ---------- «тихие» флаги занятости без влияния на UI ---------- */
+  const busyFavRef = useRef(false);
+  const busyStatusRef = useRef(false);
+  function cooldown(ref: React.MutableRefObject<boolean>, ms = 350) {
+    ref.current = true;
+    setTimeout(() => { ref.current = false; }, ms);
+  }
 
-  const onToggleFav = async () => {
-    if (!requireAuth() || saving) return;
-    const next = !fav;
-    setFav(next); // оптимистично
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/manga/${mangaId}/library`, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ favorite: next }),
-      });
-      if (res.status === 401) {
-        setFav(!next); // откат
-        setLoggedIn(false);
-        showToast('Войдите, чтобы добавлять в избранное.');
-        return;
-      }
-      if (!res.ok) throw new Error();
-      await refetchStats();
-    } catch {
-      setFav(!next); // откат
-      showToast('Не удалось обновить избранное.');
-    } finally {
-      setSaving(false);
-    }
-  };
+  /* ---------- избранное (без спиннеров/дизейблов) ---------- */
+// вместо onToggleFav с fetch — пишем в очередь
+const onToggleFav = () => {
+  if (!requireAuth()) return;
+  const next = !fav;
+  setFav(next); // оптимистично
+  libraryQueue.upsert({ manga_id: mangaId, favorite: next });
+  // по желанию: если пользователь закончил серию кликов — флашнем через секунду
+  libraryQueue.flushSoon(1200);
+};
 
-  const onPickStatus = async (value: LibStatus) => {
-    setMenuOpen(false);
-    if (!requireAuth() || saving) return;
-    const prev = status;
-    setStatus(value); // оптимистично
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/manga/${mangaId}/library`, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: value }),
-      });
-      if (res.status === 401) {
-        setStatus(prev);
-        setLoggedIn(false);
-        showToast('Войдите, чтобы сохранять статус чтения.');
-        return;
-      }
-      if (!res.ok) throw new Error();
-      await refetchStats();
-    } catch {
-      setStatus(prev); // откат
-      showToast('Не удалось обновить статус.');
-    } finally {
-      setSaving(false);
-    }
-  };
+// вместо onPickStatus с fetch — пишем в очередь
+const onPickStatus = (value: LibStatus) => {
+  setMenuOpen(false);
+  if (!requireAuth()) return;
+  const prev = status;
+  setStatus(value); // оптимистично
+  libraryQueue.upsert({ manga_id: mangaId, status: value });
+  libraryQueue.flushSoon(1200);
+};
+
 
   const current = STATUS_OPTIONS.find((o) => o.value === status);
   const CurrentIcon = (current?.Icon ?? Bookmark) as any;
 
-  // пока не смонтировались — «пустышка»
   if (!mounted) {
     return (
       <div className={['flex flex-col gap-2', className].join(' ')}>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="h-9 w-28 rounded-xl border border-transparent bg-transparent" />
-          <div className="h-9 w-28 rounded-xl border border-transparent bg-transparent" />
+          <div className="h-9 w-28 rounded-xl bg-transparent" />
+          <div className="h-9 w-28 rounded-xl bg-transparent" />
         </div>
         <div className="h-4 w-64 rounded bg-transparent" />
       </div>
@@ -258,13 +192,12 @@ export default function TitleBookmarks({
   return (
     <div className={['relative flex flex-col gap-2', className].filter(Boolean).join(' ')}>
       <div className="flex flex-wrap items-center gap-2">
-        {/* Выпадающий список статуса */}
+        {/* статус */}
         <div ref={menuRef} className="relative">
           <button
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
-            className={pill(saving ? 'opacity-60 cursor-wait' : '')}
-            disabled={saving}
+            className={pill()}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
           >
@@ -276,71 +209,66 @@ export default function TitleBookmarks({
           {menuOpen && (
             <div
               role="menu"
-              className={`absolute z-10 mt-2 w-44 overflow-hidden rounded-xl border ${baseBorder} ${
-                theme === 'light' ? 'bg-white' : 'bg-gray-900/95 backdrop-blur'
-              }`}
+              className={`absolute z-50 mt-2 w-48 rounded-2xl overflow-hidden shadow-lg
+                          ${theme === 'light'
+                            ? 'bg-slate-100 text-slate-900 ring-1 ring-slate-300/70'
+                            : 'bg-slate-900/95 text-white ring-1 ring-white/10 backdrop-blur'}`}
             >
-              {STATUS_OPTIONS.map(({ value, label, Icon }) => {
-                const active = status === value;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => onPickStatus(value)}
-                    className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${
-                      theme === 'light' ? 'hover:bg-gray-100' : 'hover:bg-white/10'
-                    } ${active ? 'opacity-100' : 'opacity-90'}`}
-                    role="menuitem"
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span>{label}</span>
-                    {active && <span className="ml-auto text-xs opacity-70">текущий</span>}
-                  </button>
-                );
-              })}
+              <div className={`${theme === 'light' ? 'divide-slate-300/60' : 'divide-white/10'} divide-y`}>
+                {STATUS_OPTIONS.map(({ value, label, Icon }) => {
+                  const active = status === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => onPickStatus(value)}
+                      role="menuitem"
+                      className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors
+                                  ${theme === 'light'
+                                    ? 'text-slate-900 hover:bg-slate-200 focus:bg-slate-200'
+                                    : 'text-white hover:bg-white/10 focus:bg-white/10'}
+                                  ${active ? '' : 'opacity-90'}`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      <span>{label}</span>
+                      {active && <span className="ml-auto text-[11px] opacity-70">текущий</span>}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
 
-        {/* Избранное */}
+        {/* избранное */}
         <button
           type="button"
           onClick={onToggleFav}
-          className={pill(saving ? 'opacity-60 cursor-wait' : '')}
-          disabled={saving}
+          className={pill()}
           aria-pressed={fav}
         >
-          <Heart className={`h-4 w-4 ${fav ? 'fill-red-500 text-red-500' : ''}`} />
+          <Heart
+            className={`h-4 w-4 ${
+              fav
+                ? 'text-black fill-[#7f1d1d] [fill-opacity:.95]'
+                : 'text-slate-700 fill-transparent'
+            }`}
+            strokeWidth={1.6}
+          />
           {favPillText}
         </button>
-
-        {/* Публичная статистика (если есть) */}
-        {publicStats && (
-          <span
-            className={`inline-flex items-center gap-2 rounded-xl border ${baseBorder} px-3 py-2 text-sm ${
-              theme === 'light' ? 'bg-gray-50 text-gray-700' : 'bg-white/5 text-white'
-            }`}
-          >
-            <Heart className="h-4 w-4" />
-            {publicStats.favorites ?? 0}
-            <span className="opacity-70">избранных</span>
-          </span>
-        )}
       </div>
 
-      {/* Подсказка для неавторизованных */}
       {loggedIn === false && (
         <div className={`text-xs ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
           Войдите в аккаунт, чтобы сохранять «избранное» и статус чтения.
         </div>
       )}
 
-      {/* Тост */}
       {toast && (
         <div
-          className={`pointer-events-none absolute -bottom-10 left-0 flex items-center gap-2 rounded-lg px-3 py-2 text-sm shadow ${
-            theme === 'light' ? 'bg-gray-900 text-white' : 'bg-white/90 text-gray-900'
-          }`}
+          className={`pointer-events-none absolute -bottom-10 left-0 flex items-center gap-2 rounded-lg px-3 py-2 text-sm shadow
+                      ${theme === 'light' ? 'bg-slate-900 text-white' : 'bg-white/90 text-slate-900'}`}
           role="status"
           aria-live="polite"
         >

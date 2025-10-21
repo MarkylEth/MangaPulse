@@ -1,3 +1,4 @@
+//components\RelatedTitlesRow.tsx
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -44,10 +45,6 @@ export default function RelatedTitlesRow({ mangaId, className = '' }: { mangaId:
 
   return (
     <section className={className}>
-      <div className="flex items-center justify-between mb-2">
-        <h3 className={`text-lg font-semibold ${title}`}>Связанное</h3>
-        {canAdd && <AddRelatedButton mangaId={mangaId} compact />}
-      </div>
 
       {items === null ? (
         <div className={`${muted} text-sm`}>Загрузка…</div>

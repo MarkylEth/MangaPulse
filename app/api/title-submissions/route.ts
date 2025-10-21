@@ -10,12 +10,32 @@ const toStrList = (v: any): string[] => {
     return lines.map((s) => s.trim()).filter(Boolean);
   }
   if (v && typeof v === 'object') {
-    // поддержка payload.tags = {names:[...]} и т.п.
     const maybe = (v as any).names ?? (v as any).values ?? Object.values(v as any);
     return toStrList(maybe);
   }
   return [];
 };
+
+// те же ярлыки, что и в админ-ручке
+function releaseFormatLabelsFrom(p: any): string[] {
+  const raw = toStrList(
+    p?.release_formats ?? p?.formats ?? p?.format ?? p?.release_format ?? p?.release_format_keys
+  );
+  const hasWord = (s: string, w: string) =>
+    new RegExp(`(?:^|[^\\p{L}\\p{N}])${w}(?:$|[^\\p{L}\\p{N}])`, 'iu').test(s);
+  const out = new Set<string>();
+  for (const s0 of raw) {
+    const s = String(s0).normalize('NFKC').toLowerCase().replace(/ё/g, 'е').trim();
+    if ((/\b4/.test(s) && s.includes('ком')) || s.includes('yonkoma')) { out.add('4-кома (Ёнкома)'); continue; }
+    if (s.includes('додз') || s.includes('doujin')) { out.add('Додзинси'); continue; }
+    if (s.includes('вебтун') || s.includes('webtoon')) { out.add('Вебтун'); continue; }
+    if (s.includes('сингл') || s.includes('one-shot') || s.includes('oneshot') || s.includes('ваншот')) { out.add('Сингл'); continue; }
+    if (s.includes('цвет') || s.includes('color') || s.includes('full color')) { out.add('В цвете'); continue; }
+    if (s.includes('сборн') || s.includes('omnibus') || s.includes('antholog')) { out.add('Сборник'); continue; }
+    if ((hasWord(s, 'веб') || hasWord(s, 'web')) && !s.includes('webtoon')) { out.add('Веб'); continue; }
+  }
+  return Array.from(out);
+}
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -59,16 +79,19 @@ export async function POST(req: NextRequest) {
 
     const title_romaji = toStr(p.title_romaji);
 
+    // нормализуем форматы выпуска сразу при создании заявки
+    const release_formats = releaseFormatLabelsFrom(p);
+
     // ——— INSERT ———
     const sql = `
       INSERT INTO title_submissions (
         user_id, author_name, manga_id, type, status,
-        payload, source_links, genres, tags,
+        payload, source_links, genres, tags, release_formats,
         title_romaji, author_comment, created_at
       ) VALUES (
         $1, $2, $3, $4, 'pending',
-        $5::jsonb, $6::text[], $7::text[], $8::text[],
-        $9, $10, NOW()
+        $5::jsonb, $6::text[], $7::text[], $8::text[], $9::text[],
+        $10, $11, NOW()
       )
       RETURNING id
     `;
@@ -81,6 +104,7 @@ export async function POST(req: NextRequest) {
       source_links,
       genres,
       tags,
+      release_formats,
       title_romaji,
       author_comment,
     ];

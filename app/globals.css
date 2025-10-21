@@ -1,36 +1,119 @@
+/* app/globals.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ========================================
+   CSS ПЕРЕМЕННЫЕ ДЛЯ ЦЕНТРАЛИЗОВАННЫХ ЦВЕТОВ
+   ======================================== */
+@layer base {
+  :root {
+    /* Светлая тема */
+    --background: 255 255 255;
+    --foreground: 0 0 0;
+    --card: 245 245 245;
+    --card-foreground: 0 0 0;
+    --muted: 245 245 245;
+    --muted-foreground: 115 115 115;
+    --border: 229 229 229;
+    --accent: 99 102 241; /* indigo-500 */
+
+    /* Scrollbar vars — light */
+    --scrollbar-track: 226 232 240;       /* #e2e8f0 */
+    --scrollbar-thumb: 203 213 225;       /* #cbd5e1 */
+    --scrollbar-thumb-hover: 148 163 184; /* #94a3b8 */
+  }
+
+  .dark {
+    /* Тёмная тема - zinc */
+    --background: 9 9 11;        /* zinc-950 */
+    --foreground: 244 244 245;   /* zinc-100 */
+    --card: 24 24 27;            /* zinc-900 */
+    --card-foreground: 244 244 245;
+    --muted: 39 39 42;           /* zinc-800 */
+    --muted-foreground: 161 161 170; /* zinc-400 */
+    --border: 39 39 42;          /* zinc-800 */
+    --accent: 129 140 248;       /* indigo-400 */
+
+    /* Scrollbar vars — dark */
+    --scrollbar-track: 30 41 59;          /* #1e293b */
+    --scrollbar-thumb: 71 85 105;         /* #475569 */
+    --scrollbar-thumb-hover: 100 116 139; /* #64748b */
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Системные цвета нативных элементов (инпуты, скроллбары и т.п.) */
+:root { color-scheme: light dark; }
 
 /* =========================
    Глобальные фоны по теме
    (класс темы ставится на <html>)
    ========================= */
 
-html.dark {
-  /* фон всей страницы — только для тёмной темы */
-  background: linear-gradient(135deg, #111827 0%, #0d1422 50%, #0b0b0f 100%);
-  background-size: 400% 400%;
-  animation: gradientShift 100s linear infinite alternate;
+/* Спойлер-блок в новостях */
+details.spoiler {
+  display: inline-block;
+  background: rgba(128, 128, 128, 0.15);
+  border: 1px solid rgba(128, 128, 128, 0.25);
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  margin: 0 0.15rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-html.light {
-  /* светлая тема */
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
-  background-size: 400% 400%;
-  animation: gradientShift 100s linear infinite alternate;
+details.spoiler summary {
+  cursor: pointer;
+  list-style: none;
+  outline: none;
+  font-size: 0.875rem;
+  color: rgba(128, 128, 128, 0.9);
+  user-select: none;
+}
+
+details.spoiler summary::-webkit-details-marker { display: none; }
+
+/* Когда спойлер открыт - скрываем summary и показываем содержимое */
+details.spoiler[open] summary { display: none; }
+
+details.spoiler[open] {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+details.spoiler[open] > div { display: inline; }
+
+/* Светлая тема для спойлеров */
+html.light details.spoiler {
+  background: rgba(100, 100, 100, 0.12);
+  border: 1px solid rgba(100, 100, 100, 0.2);
+}
+html.light details.spoiler summary { color: rgba(80, 80, 80, 0.85); }
+
+/* Поддержка системной настройки «уменьшить анимацию» */
+@media (prefers-reduced-motion: reduce) {
+  html.dark, html.light { animation: none !important; }
 }
 
 /* =========================
    Режим «чёрный ридер»
    Применяй класс reader-force-dark на <html> или <body>
-   чтобы на странице главы фон был строго чёрный
    ========================= */
-
 html.reader-force-dark,
 body.reader-force-dark {
   background: #000 !important;
   animation: none !important;
+
+  /* Переопределяем цвета скролла под «чёрный ридер» */
+  --scrollbar-track: 10 10 10;    /* #0a0a0a */
+  --scrollbar-thumb: 42 42 42;    /* #2a2a2a */
+  --scrollbar-thumb-hover: 58 58 58; /* #3a3a3a */
 }
 
 /* анимация градиента */
@@ -44,9 +127,7 @@ body.reader-force-dark {
    Полезные утилиты
    ========================= */
 @layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+  .text-balance { text-wrap: balance; }
   .line-clamp-1 {
     overflow: hidden;
     display: -webkit-box;
@@ -62,59 +143,39 @@ body.reader-force-dark {
 }
 
 /* =========================
-   Скроллбары — тёмная тема
+   ЕДИНЫЙ стиль скроллбаров (для обеих тем)
    ========================= */
-html.dark::-webkit-scrollbar {
-  width: 6px;
-}
-html.dark::-webkit-scrollbar-track {
-  background: #1e293b;
-}
-html.dark::-webkit-scrollbar-thumb {
-  background: #475569;
-  border-radius: 3px;
-}
-html.dark::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+
+/* Firefox */
+html,
+.nice-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--scrollbar-thumb)) transparent;
 }
 
-/* =========================
-   Скроллбары — светлая тема
-   ========================= */
-html.light::-webkit-scrollbar {
-  width: 6px;
-}
-html.light::-webkit-scrollbar-track {
-  background: #e2e8f0;
-}
-html.light::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
-}
-html.light::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+/* WebKit (Chrome/Edge/Safari) */
+html::-webkit-scrollbar,
+.nice-scrollbar::-webkit-scrollbar {
+  width: 8px;   /* толщина вертикального */
+  height: 8px;  /* толщина горизонтального */
 }
 
-/* =========================
-   Скроллбары — «чёрный ридер»
-   ========================= */
-html.reader-force-dark::-webkit-scrollbar,
-body.reader-force-dark::-webkit-scrollbar {
-  width: 6px;
+html::-webkit-scrollbar-track,
+.nice-scrollbar::-webkit-scrollbar-track {
+  background: rgb(var(--scrollbar-track));
 }
-html.reader-force-dark::-webkit-scrollbar-track,
-body.reader-force-dark::-webkit-scrollbar-track {
-  background: #0a0a0a;
+
+html::-webkit-scrollbar-thumb,
+.nice-scrollbar::-webkit-scrollbar-thumb {
+  background: rgb(var(--scrollbar-thumb));
+  border-radius: 8px;
 }
-html.reader-force-dark::-webkit-scrollbar-thumb,
-body.reader-force-dark::-webkit-scrollbar-thumb {
-  background: #2a2a2a;
-  border-radius: 3px;
+
+html::-webkit-scrollbar-thumb:hover,
+.nice-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--scrollbar-thumb-hover));
 }
-html.reader-force-dark::-webkit-scrollbar-thumb:hover,
-body.reader-force-dark::-webkit-scrollbar-thumb:hover {
-  background: #3a3a3a;
-}
+
 /* ——— Pretty scrollbar for the horizontal feed ——— */
 .feed-scroll {
   scrollbar-width: thin; /* Firefox */

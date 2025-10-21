@@ -2,8 +2,8 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { Search, Menu, Grid3X3, Plus, Home, User, LogOut } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Search, Menu, Plus, Home, User, LogOut, Sparkles, LayoutGrid } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -11,7 +11,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from '@/lib/theme/context';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import AuthModal from '@/components/auth/AuthModal';
-import AddTitleModal from '@/components/AddTitleModal';
+import AddTitleModal from '@/components/add-title/AddTitleModal';
 import CreateTeamDialog from '@/components/teams/CreateTeamDialog';
 import AddRelatedButton from '@/components/AddRelatedButton';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -20,14 +20,13 @@ interface HeaderProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
   showSearch?: boolean;
-  /** ← вернули, чтобы не падали страницы, где он пробрасывается */
   sidebarOpen?: boolean;
   onSidebarToggle?: () => void;
 }
 
 const ThemedLogo = ({ className = '' }: { className?: string }) => {
   const { theme } = useTheme();
-  const src = theme === 'light' ? '/logo.png' : '/logodark.png';
+  const src = '/logodark.png';
   return (
     <motion.div
       className={`origin-left inline-block select-none ${className}`}
@@ -45,7 +44,7 @@ export function Header({
   searchQuery = '',
   onSearchChange,
   showSearch = true,
-  sidebarOpen,            // ← просто принимаем; сейчас внутри не используем
+  sidebarOpen,
   onSidebarToggle,
 }: HeaderProps) {
   const { theme } = useTheme();
@@ -54,10 +53,18 @@ export function Header({
 
   const { user, isGuest, setUser } = useAuth();
 
+  // ✅ ИСПРАВЛЕНИЕ: используем username вместо email
   const profileName = useMemo(() => {
-    if (user?.nickname) return user.nickname as string;
+    // ✅ ТОЛЬКО username для URL профиля!
+    return user?.username ? String(user.username) : null;
+  }, [user]);
+
+  // ✅ Для отображения в меню - используем nickname или username
+  const displayName = useMemo(() => {
+    if (user?.nickname) return String(user.nickname);
+    if (user?.username) return String(user.username);
     if (user?.email) return String(user.email).split('@')[0];
-    return null;
+    return 'Гость';
   }, [user]);
 
   const profileRole = (user as any)?.role ?? null;
@@ -70,19 +77,16 @@ export function Header({
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const createMenuRef = useRef<HTMLDivElement | null>(null);
 
-  // закрытие меню профиля по клику вне (без capture)
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
-      // просто закрываем; это выполнится ПОСЛЕ onClick элементов меню
       setShowUserMenu(false);
     }
     if (showUserMenu) {
-      document.addEventListener('click', onDocClick);            // ← без capture
+      document.addEventListener('click', onDocClick);
       return () => document.removeEventListener('click', onDocClick);
     }
   }, [showUserMenu]);
 
-  // закрытие меню “создать” по клику вне
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (!createMenuRef.current) return;
@@ -94,15 +98,11 @@ export function Header({
     }
   }, [createMenuOpen]);
 
-  // смена маршрута — закрываем выпадашки
   useEffect(() => {
     setShowUserMenu(false);
     setCreateMenuOpen(false);
   }, [pathname]);
 
-  const textClass = theme === 'light' ? 'text-gray-900' : 'text-white';
-
-  // поиск
   const [searchLocal, setSearchLocal] = useState(searchQuery);
   useEffect(() => setSearchLocal(searchQuery), [searchQuery]);
   useEffect(() => {
@@ -110,7 +110,6 @@ export function Header({
     return () => clearTimeout(id);
   }, [searchLocal, onSearchChange]);
 
-  // logout
   async function handleLogout() {
     setShowUserMenu(false);
     try {
@@ -122,7 +121,6 @@ export function Header({
     router.refresh();
   }
 
-  // ID манги из URL — для кнопки "Добавить связанное"
   const currentMangaId = useMemo(() => {
     const m = pathname?.match(/^\/manga\/(\d+)/i);
     return m ? Number(m[1]) : null;
@@ -131,60 +129,107 @@ export function Header({
 
   return (
     <>
-      <header className={`backdrop-blur-sm border-b sticky top-0 z-50 ${theme === 'light' ? 'bg-white/90 border-gray-200' : 'bg-slate-800/50 border-slate-700'}`}>
-        <div className="mx-auto px-3 sm:px-4">
-          <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 py-2.5">
+      <header className="backdrop-blur-md border-b border-zinc-800/50 bg-zinc-950/80 sticky top-0 z-50">
+        {/* Ambient glow effect */}
+        <div className="absolute inset-0 pointer-events-none opacity-30">
+          <div className="absolute top-0 left-1/3 w-64 h-32 bg-purple-500/20 rounded-full blur-3xl" />
+          <div className="absolute top-0 right-1/3 w-64 h-32 bg-blue-500/20 rounded-full blur-3xl" />
+        </div>
+
+        <div className="relative mx-auto px-3 sm:px-6 max-w-[1600px]">
+          <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 sm:gap-4 py-3">
             {/* Left */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               {onSidebarToggle && (
                 <motion.button
-                  whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                  whileHover={{ scale: 1.05 }} 
+                  whileTap={{ scale: 0.95 }}
                   onClick={onSidebarToggle}
-                  className={`p-1.5 rounded-lg transition-colors ${theme==='light'?'bg-gray-100 hover:bg-gray-200':'bg-slate-700 hover:bg-slate-600'}`}
+                  className="p-2 rounded-lg bg-zinc-900/60 hover:bg-zinc-800/80 border border-zinc-800/50 hover:border-zinc-700 transition-all backdrop-blur-sm"
                   aria-label="Открыть меню"
                 >
-                  <Menu className={`w-4 h-4 ${textClass}`} />
+                  <Menu className="w-4 h-4 text-zinc-300" />
                 </motion.button>
               )}
-              <Link href="/" className="flex items-center" aria-label="На главную"><ThemedLogo /></Link>
+              <Link href="/" className="flex items-center" aria-label="На главную">
+                <ThemedLogo />
+              </Link>
             </div>
 
             {/* Center - Search */}
             {showSearch ? (
               <div className="flex-1 max-w-2xl mx-auto">
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10">
-                    <Link href="/catalog">
-                      <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md transition-colors">
-                        <Grid3X3 className="w-4 h-4" /> Каталог
-                      </motion.button>
-                    </Link>
-                  </div>
+                <div className="relative group">
+                  {/* Улучшенная кнопка каталога */}
+                  <Link href="/catalog" className="absolute left-2 top-1/2 -translate-y-1/2 z-10">
+                    <motion.button 
+                      whileHover={{ scale: 1.02, y: -1 }} 
+                      whileTap={{ scale: 0.98 }}
+                      className="relative flex items-center gap-2 px-4 py-2 bg-gradient-to-br from-indigo-600 via-blue-600 to-cyan-600 hover:from-indigo-500 hover:via-blue-500 hover:to-cyan-500 text-white text-sm font-medium rounded-lg transition-all shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 overflow-hidden group/btn"
+                    >
+                      {/* Анимированный фон */}
+                      <motion.div
+                        className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                        animate={{ x: ['-200%', '200%'] }}
+                        transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                      />
+                      
+                      {/* Иконка с анимацией */}
+                      <motion.div
+                        whileHover={{ rotate: 180 }}
+                        transition={{ duration: 0.3 }}
+                        className="relative z-10"
+                      >
+                        <LayoutGrid className="w-4 h-4" />
+                      </motion.div>
+                      
+                      <span className="hidden sm:inline relative z-10">Каталог</span>
+                      
+                      {/* Декоративные элементы */}
+                      <div className="absolute top-0 right-0 w-8 h-8 bg-cyan-400/20 rounded-full blur-xl group-hover/btn:bg-cyan-400/30 transition-all" />
+                      <div className="absolute bottom-0 left-0 w-6 h-6 bg-indigo-400/20 rounded-full blur-lg group-hover/btn:bg-indigo-400/30 transition-all" />
+                    </motion.button>
+                  </Link>
+
+                  {/* Поле поиска */}
                   <input
                     type="text"
-                    placeholder="   Поиск манги..."
+                    placeholder="Поиск манги..."
                     value={searchLocal}
                     onChange={(e) => setSearchLocal(e.target.value)}
-                    className={`w-full rounded-lg pl-28 pr-12 py-3 border focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
-                      theme==='light'?'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-500':'bg-slate-700 border-slate-600 text-white placeholder-slate-400'
-                    }`}
+                    className="w-full rounded-xl pl-[110px] sm:pl-32 pr-12 py-3 border border-zinc-800/50 bg-zinc-900/40 backdrop-blur-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all hover:bg-zinc-900/60"
                   />
-                  <Search className={`absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 ${theme==='light'?'text-gray-400':'text-slate-400'}`} />
+                  
+                  {/* Иконка поиска с эффектом */}
+                  <motion.div
+                    className="absolute right-4 top-1/2 -translate-y-1/2"
+                    animate={{ scale: searchLocal ? [1, 1.1, 1] : 1 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <Search className="w-5 h-5 text-zinc-500 group-hover:text-zinc-400 transition-colors" />
+                  </motion.div>
                 </div>
               </div>
             ) : (
-              <div className="flex-1 flex items-center justify-center gap-4">
+              <div className="flex-1 flex items-center justify-center gap-2 sm:gap-4">
                 <Link href="/">
-                  <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm transition-colors ${theme==='light'?'text-gray-600 hover:text-gray-900':'text-slate-300 hover:text-white'}`}>
-                    <Home className="w-4 h-4" /><span className="hidden sm:block">Главная</span>
+                  <motion.button 
+                    whileHover={{ scale: 1.05 }} 
+                    whileTap={{ scale: 0.95 }}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900/60 rounded-lg transition-all"
+                  >
+                    <Home className="w-4 h-4" />
+                    <span className="hidden sm:block">Главная</span>
                   </motion.button>
                 </Link>
                 <Link href="/catalog">
-                  <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm transition-colors ${theme==='light'?'text-gray-600 hover:text-gray-900':'text-slate-300 hover:text-white'}`}>
-                    <Grid3X3 className="w-4 h-4" /><span className="hidden sm:block">Каталог</span>
+                  <motion.button 
+                    whileHover={{ scale: 1.05 }} 
+                    whileTap={{ scale: 0.95 }}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900/60 rounded-lg transition-all"
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                    <span className="hidden sm:block">Каталог</span>
                   </motion.button>
                 </Link>
               </div>
@@ -194,87 +239,126 @@ export function Header({
             <div className="flex items-center gap-2">
               {canAddRelated && <AddRelatedButton mangaId={currentMangaId!} compact />}
 
+              {/* Переключатель темы */}
               <ThemeToggle />
 
-              {/* "+" */}
+              {/* Create Menu */}
               <div className="relative" ref={createMenuRef}>
-                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                <motion.button 
+                  whileHover={{ scale: 1.05 }} 
+                  whileTap={{ scale: 0.95 }}
                   onClick={() => setCreateMenuOpen((v) => !v)}
-                  className="p-1.5 rounded-lg bg-green-600 hover:bg-green-700 transition-colors" title="Создать">
+                  className="relative p-2 rounded-lg bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 transition-all shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30" 
+                  title="Создать"
+                >
                   <Plus className="w-4 h-4 text-white" />
+                  {createMenuOpen && (
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400"
+                    />
+                  )}
                 </motion.button>
 
-                {createMenuOpen && (
-                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
-                    className={`absolute right-0 mt-2 w-56 rounded-2xl border p-2 text-sm shadow-xl z-50 ${
-                      theme==='light'?'bg-white border-gray-200':'bg-slate-800 border-slate-700'
-                    }`}
-                  >
-                    <button
-                      onClick={() => { setCreateMenuOpen(false); setAddTitleModalOpen(true); }}
-                      className={`w-full rounded-lg px-3 py-2 text-left transition-colors ${theme==='light'?'hover:bg-slate-100':'hover:bg-slate-700/60 text-slate-200'}`}
+                <AnimatePresence>
+                  {createMenuOpen && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 8, scale: 0.95 }} 
+                      animate={{ opacity: 1, y: 0, scale: 1 }} 
+                      exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 mt-2 w-56 rounded-xl border border-zinc-800/50 bg-zinc-900/95 backdrop-blur-xl p-2 text-sm shadow-2xl shadow-black/50 z-50"
                     >
-                      Предложить новый тайтл
-                    </button>
-                    <button
-                      onClick={() => { setCreateMenuOpen(false); setTeamDialogOpen(true); }}
-                      className={`w-full rounded-lg px-3 py-2 text-left transition-colors ${theme==='light'?'hover:bg-slate-100':'hover:bg-slate-700/60 text-slate-200'}`}
-                    >
-                      Создать команду
-                    </button>
-                  </motion.div>
-                )}
+                      <button
+                        onClick={() => { setCreateMenuOpen(false); setAddTitleModalOpen(true); }}
+                        className="w-full rounded-lg px-3 py-2.5 text-left text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/60 transition-all flex items-center gap-2 group"
+                      >
+                        <Sparkles className="w-4 h-4 text-emerald-400 group-hover:text-emerald-300" />
+                        Предложить новый тайтл
+                      </button>
+                      <button
+                        onClick={() => { setCreateMenuOpen(false); setTeamDialogOpen(true); }}
+                        className="w-full rounded-lg px-3 py-2.5 text-left text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/60 transition-all flex items-center gap-2 group"
+                      >
+                        <User className="w-4 h-4 text-blue-400 group-hover:text-blue-300" />
+                        Создать команду
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
-              {/* Профиль */}
+              {/* Profile Menu */}
               <div className="relative">
-                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                <motion.button 
+                  whileHover={{ scale: 1.05 }} 
+                  whileTap={{ scale: 0.95 }}
                   onClick={(e) => { e.stopPropagation(); setShowUserMenu((v) => !v); }}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors ${theme==='light'?'bg-gray-100 hover:bg-gray-200':'bg-slate-700 hover:bg-slate-600'}`}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900/60 hover:bg-zinc-800/80 border border-zinc-800/50 hover:border-zinc-700 transition-all backdrop-blur-sm"
                 >
-                  <User className={`w-4 h-4 ${textClass}`} />
-                  <span className={`text-sm hidden sm:block ${textClass}`}>{profileName ?? 'Гость'}</span>
+                  <div className="relative">
+                    <User className="w-4 h-4 text-zinc-300" />
+                    {!isGuest && (
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-zinc-900"
+                      />
+                    )}
+                  </div>
+                  <span className="text-sm text-zinc-300 hidden sm:block font-medium">
+                    {displayName}
+                  </span>
                 </motion.button>
 
-                {showUserMenu && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 8 }}
-                    onMouseDown={(e) => e.stopPropagation()}   // ← чтобы закрывалка «снаружи» не съедала клик
-                    onClick={(e) => e.stopPropagation()}       // ← и на всякий случай
-                    className={`absolute right-0 mt-2 w-52 rounded-lg border shadow-lg z-50 ${theme==='light'?'bg-white border-gray-200':'bg-slate-800 border-slate-700'}`}
-                  >
-                    <div className="py-2">
-                      {!isGuest ? (
-                        <>
-                          <Link href={`/profile/${encodeURIComponent(profileName ?? 'user')}`} onClick={() => setShowUserMenu(false)}
-                            className={`block px-4 py-2 text-sm transition-colors ${theme==='light'?'text-gray-700 hover:bg-gray-100':'text-slate-300 hover:bg-slate-700'}`}>
-                            Мой профиль
-                          </Link>
-                          <button onClick={handleLogout}
-                            className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors ${theme==='light'?'text-gray-700 hover:bg-gray-100':'text-slate-300 hover:bg-slate-700'}`}>
-                            <LogOut className="w-4 h-4" /> Выйти с аккаунта
+                <AnimatePresence>
+                  {showUserMenu && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute right-0 mt-2 w-52 rounded-xl border border-zinc-800/50 bg-zinc-900/95 backdrop-blur-xl shadow-2xl shadow-black/50 z-50 overflow-hidden"
+                    >
+                      <div className="p-2">
+                        {!isGuest ? (
+                          <>
+                            <Link 
+                              href={`/profile/${encodeURIComponent(profileName ?? 'user')}`} 
+                              onClick={() => setShowUserMenu(false)}
+                              className="block px-3 py-2.5 text-sm text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/60 rounded-lg transition-all"
+                            >
+                              Мой профиль
+                            </Link>
+                            <button 
+                              onClick={handleLogout}
+                              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/60 rounded-lg transition-all group"
+                            >
+                              <LogOut className="w-4 h-4 text-red-400 group-hover:text-red-300" />
+                              Выйти с аккаунта
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => { setAuthModalOpen(true); setShowUserMenu(false); }}
+                            className="w-full text-left px-3 py-2.5 text-sm text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/60 rounded-lg transition-all"
+                          >
+                            Войти / Регистрация
                           </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => { setAuthModalOpen(true); setShowUserMenu(false); }}
-                          className={`w-full text-left px-4 py-2 text-sm transition-colors ${theme==='light'?'text-gray-700 hover:bg-gray-100':'text-slate-300 hover:bg-slate-700'}`}
-                        >
-                          Войти / Регистрация
-                        </button>
-                      )}
-                    </div>
-                  </motion.div>
-                )}
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Модалки (локальные для Header) */}
       <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
       <AddTitleModal open={addTitleModalOpen} onOpenChange={setAddTitleModalOpen} />
       {teamDialogOpen && <CreateTeamDialog onClose={() => setTeamDialogOpen(false)} />}
