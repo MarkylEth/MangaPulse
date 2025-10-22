@@ -53,23 +53,26 @@ async function generateUsername(base: string): Promise<string> {
   const sanitized = base
     .toLowerCase()
     .replace(/[^a-z0-9_]/g, '')
-    .slice(0, 20) || 'user';
+    .slice(0, 16) || 'user';
 
-  // Проверяем занятость
+  // Сразу проверяем базовый вариант
   let candidate = sanitized;
-  for (let i = 1; i <= 100; i++) {
+  
+  for (let i = 1; i <= 999; i++) { // увеличить до 999
     const { rows } = await query<{ exists: boolean }>(
       `SELECT EXISTS(SELECT 1 FROM users WHERE LOWER(username) = LOWER($1))`,
       [candidate]
     );
-
+    
     if (!rows[0]?.exists) return candidate;
-
+    
+    // Используем более компактный формат: user123 вместо user_1234567890
     candidate = `${sanitized}${i}`;
   }
-
-  // Fallback: добавляем timestamp
-  return `${sanitized}_${Date.now().toString(36)}`;
+  
+  // Fallback: случайный суффикс вместо timestamp
+  const randomSuffix = Math.random().toString(36).substring(2, 8);
+  return `${sanitized}_${randomSuffix}`;
 }
 
 async function storeEmailToken(email: string, tokenHash: string, ttlHours = 24) {

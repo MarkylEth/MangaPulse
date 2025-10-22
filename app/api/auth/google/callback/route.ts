@@ -20,23 +20,26 @@ async function generateUsername(base: string): Promise<string> {
   const sanitized = base
     .toLowerCase()
     .replace(/[^a-z0-9_]/g, '')
-    .slice(0, 20) || 'user';
+    .slice(0, 16) || 'user';
 
-  // Проверяем занятость
+  // Сразу проверяем базовый вариант
   let candidate = sanitized;
-  for (let i = 1; i <= 100; i++) {
+  
+  for (let i = 1; i <= 999; i++) { // увеличить до 999
     const { rows } = await query<{ exists: boolean }>(
-      `SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)`,
+      `SELECT EXISTS(SELECT 1 FROM users WHERE LOWER(username) = LOWER($1))`,
       [candidate]
     );
     
     if (!rows[0]?.exists) return candidate;
     
+    // Используем более компактный формат: user123 вместо user_1234567890
     candidate = `${sanitized}${i}`;
   }
   
-  // Fallback: добавляем timestamp
-  return `${sanitized}_${Date.now().toString(36)}`;
+  // Fallback: случайный суффикс вместо timestamp
+  const randomSuffix = Math.random().toString(36).substring(2, 8);
+  return `${sanitized}_${randomSuffix}`;
 }
 
 export async function GET(req: NextRequest) {
@@ -96,6 +99,7 @@ export async function GET(req: NextRequest) {
       email?: string;
       name?: string;
       picture?: string;
+      email_verified?: boolean;
     } = await userRes.json();
 
     if (!googleUser.sub) {
@@ -114,7 +118,7 @@ export async function GET(req: NextRequest) {
 
     if (existing.rowCount) {
       userId = existing.rows[0].id;
-      
+
       // ✅ Обновляем google_sub если нашли по email
       await query(
         `UPDATE users SET google_sub = $1 WHERE id = $2`,
@@ -126,10 +130,13 @@ export async function GET(req: NextRequest) {
         googleUser.email?.split('@')[0] || googleUser.name || 'user'
       );
 
+      // ✅ Добавляем проверку email_verified
+      const emailVerified = googleUser.email_verified ? 'NOW()' : 'NULL';
+
       const newUser = await query<{ id: string }>(
         `INSERT INTO users (email, username, google_sub, email_verified_at)
-         VALUES ($1, $2, $3, NOW())
-         RETURNING id`,
+        VALUES ($1, $2, $3, ${emailVerified})
+        RETURNING id`,
         [googleUser.email || null, username, googleUser.sub]
       );
 
@@ -138,7 +145,7 @@ export async function GET(req: NextRequest) {
       // ✅ Создаём профиль с аватаром из Google
       await query(
         `INSERT INTO profiles (user_id, display_name, avatar_url)
-         VALUES ($1, $2, $3)`,
+        VALUES ($1, $2, $3)`,
         [userId, googleUser.name || username, googleUser.picture || null]
       );
     }

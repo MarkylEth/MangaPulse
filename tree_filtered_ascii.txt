@@ -274,7 +274,9 @@
 |   |   |   |       +-- route.ts
 |   |   |   +-- by-username
 |   |   |   |   +-- route.ts
-|   |   |   \-- check-username
+|   |   |   +-- check-username
+|   |   |   |   +-- route.ts
+|   |   |   \-- update
 |   |   |       +-- route.ts
 |   |   +-- publishers
 |   |   |   +-- route.ts
@@ -600,6 +602,7 @@
 |   +-- data
 |   |   +-- chapters.ts
 |   +-- db
+|   |   +-- cleanup.ts
 |   |   +-- users.ts
 |   +-- manga
 |   |   +-- hooks.ts
