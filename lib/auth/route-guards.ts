@@ -1,7 +1,7 @@
 // lib/auth/route-guards.ts
 import type { NextRequest } from "next/server";
 import { query } from "@/lib/db";
-import { getSessionToken } from '@/lib/auth/session'
+import { getSessionToken, verifySession } from '@/lib/auth/session';
 
 /* ====================== Types ====================== */
 export type AuthUser = {
@@ -21,35 +21,38 @@ const ALLOW_DEV_HEADER_ID =
   String(process.env.AUTH_ALLOW_DEV_HEADER || "").trim() === "1" ||
   process.env.NODE_ENV !== "production";
 
-/* ====================== Helpers ====================== */
+/* ====================== Small helpers ====================== */
 function isValidUUID(uuid: string): boolean {
   const re = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   return re.test(uuid);
 }
 
+/** Единый конструктор JSON-ответов об ошибке для throw Response */
+function jsonError(status: 401 | 403, reason: GuardFailReason) {
+  return new Response(JSON.stringify({ error: reason }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 /** dev-фолбэк: берём id из заголовка/куки x-user-id (только в dev, если разрешено) */
 async function getViewerIdFromHeaderOrCookie(req?: Request | NextRequest): Promise<string | null> {
   if (!ALLOW_DEV_HEADER_ID) return null;
-
   try {
     const idFromHeader = req?.headers?.get("x-user-id")?.trim();
     if (idFromHeader && isValidUUID(idFromHeader)) return idFromHeader;
   } catch {}
-
   try {
     const { cookies } = await import("next/headers");
     const store = await cookies();
     const idFromCookie = store.get("x-user-id")?.value?.trim();
     if (idFromCookie && isValidUUID(idFromCookie)) return idFromCookie;
   } catch {}
-
   return null;
 }
 
 /* ====================== Core auth ====================== */
-/** Достаём текущего пользователя из mp_session (+dev-фолбэк). */
 export async function getAuthUser(req?: Request | NextRequest): Promise<AuthUser | null> {
-  // 1) mp_session
   let userId: string | null = null;
   try {
     const token = await getSessionToken();
@@ -57,77 +60,60 @@ export async function getAuthUser(req?: Request | NextRequest): Promise<AuthUser
     if (payload?.sub) userId = String(payload.sub);
   } catch {}
 
-  // 2) dev-фолбэк
   if (!userId) {
     const devId = await getViewerIdFromHeaderOrCookie(req);
     if (devId) userId = devId;
   }
-
   if (!userId) return null;
 
-  // profile: username/role
-  let usernameFromProfile: string | null = null;
-  let roleFromProfile: string | null = null;
-  try {
-    const prof = await query<{ username: string | null; role: string | null }>(
-      `select username, coalesce(role,'user') as role
-         from public.profiles
-        where id = $1
-        limit 1`,
-      [userId]
-    );
-    usernameFromProfile = prof.rows?.[0]?.username ?? null;
-    roleFromProfile = prof.rows?.[0]?.role ?? null;
-  } catch {}
+  const { rows } = await query<{
+    id: string;
+    email: string | null;
+    username: string | null;
+    role: string | null;
+    leader_team_id: number | null;
+  }>(
+    `SELECT 
+      u.id,
+      u.email,
+      u.username,
+      COALESCE(p.role, 'user') as role,
+      ttm.team_id as leader_team_id
+    FROM users u
+    LEFT JOIN profiles p ON p.user_id = u.id
+    LEFT JOIN translator_team_members ttm ON ttm.user_id = u.id AND (ttm.is_leader = true OR ttm.role = 'leader')
+    WHERE u.id = $1
+    LIMIT 1`,
+    [userId]
+  );
 
-  // email из users
-  let email: string | null = null;
-  try {
-    const u = await query<{ email: string | null }>(
-      `select email from public.users where id = $1 limit 1`,
-      [userId]
-    );
-    email = u.rows?.[0]?.email ?? null;
-  } catch {}
-
-  // лидерка (если есть)
-  let leaderTeamId: number | null = null;
-  try {
-    const t = await query<{ team_id: number }>(
-      `select team_id
-         from translator_team_members
-        where user_id::text = $1 and (is_leader is true or role = 'leader')
-        limit 1`,
-      [userId]
-    );
-    if (t.rows?.[0]?.team_id != null) leaderTeamId = Number(t.rows[0].team_id);
-  } catch {}
+  if (!rows[0]) return null;
 
   return {
-    id: userId,
-    username: usernameFromProfile,
-    email,
-    role: (roleFromProfile ?? "user") as any,
-    leaderTeamId,
+    id: rows[0].id,
+    username: rows[0].username,
+    email: rows[0].email,
+    role: rows[0].role as any,
+    leaderTeamId: rows[0].leader_team_id,
   };
 }
 
-/* ====================== Guards ====================== */
-/** Удобный guard: обязательно авторизован (без аргументов). */
+/* ====================== Guards (OK/Fail объект) ====================== */
+/** Обязательно авторизован — бросает 401 (удобно для страниц/действий). */
 export async function requireUser(req?: Request | NextRequest): Promise<AuthUser> {
   const u = await getAuthUser(req);
   if (!u) throw new Response("Unauthorized", { status: 401 });
   return u;
 }
 
-/** Возвращает ok/401 без исключений — если удобнее таким форматом. */
+/** ok/401 без исключений — если удобнее таким форматом. */
 export async function requireLoggedIn(req?: Request | NextRequest): Promise<GuardOk | GuardFail> {
   const user = await getAuthUser(req);
   if (!user) return { ok: false, status: 401, reason: "unauthorized", user: null };
   return { ok: true, status: 200, reason: null, user };
 }
 
-/** Требует роль из списка (user пропускается только если в списке). */
+/** ok/403 без исключений — «мягкий» вариант. */
 export async function requireRole(
   req: Request | NextRequest,
   roles: string[] | string
@@ -141,7 +127,30 @@ export async function requireRole(
   return { ok: true, status: 200, reason: null, user: u };
 }
 
-/** По API-ключу (x-api-key) даём доступ как системному администратору, иначе требуем роль. */
+/* ====================== Guards (бросающие исключение) ====================== */
+/** Бросающая версия: гарантирует авторизацию, иначе throw Response 401(JSON). */
+export async function ensureLoggedIn(req?: Request | NextRequest): Promise<AuthUser> {
+  const u = await getAuthUser(req);
+  if (!u) throw jsonError(401, "unauthorized");
+  return u;
+}
+
+/** Бросающая версия requireRole: 401 если не залогинен, 403 если роль не подходит. */
+export async function ensureRole(
+  req: Request | NextRequest,
+  roles: string[] | string
+): Promise<AuthUser> {
+  const allowed = (Array.isArray(roles) ? roles : [roles]).map((r) => String(r).toLowerCase());
+  const u = await getAuthUser(req);
+  if (!u) throw jsonError(401, "unauthorized");
+
+  const role = String(u.role ?? "user").toLowerCase();
+  if (!allowed.includes(role)) throw jsonError(403, "forbidden");
+
+  return u;
+}
+
+/** По API-ключу даём системный доступ, иначе требуем роль — «мягко». */
 export async function requireUploader(req: Request | NextRequest): Promise<GuardOk | GuardFail> {
   const key = (req.headers as any)?.get?.("x-api-key")?.trim?.() ?? "";
   const allowKey =
@@ -158,6 +167,19 @@ export async function requireUploader(req: Request | NextRequest): Promise<Guard
     };
   }
   return requireRole(req, ["admin", "moderator"]);
+}
+
+/** Бросающая версия uploader: кидает 401/403 JSON. */
+export async function ensureUploader(req: Request | NextRequest): Promise<AuthUser> {
+  const key = (req.headers as any)?.get?.("x-api-key")?.trim?.() ?? "";
+  const allowKey =
+    key &&
+    (key === (process.env.ADMIN_UPLOAD_KEY || "") ||
+      key === (process.env.NEXT_PUBLIC_ADMIN_UPLOAD_KEY || ""));
+  if (allowKey) {
+    return { id: "system", username: "system", email: null, role: "admin", leaderTeamId: null };
+  }
+  return ensureRole(req, ["admin", "moderator"]);
 }
 
 /* ====================== Back-compat ====================== */

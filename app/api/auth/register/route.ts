@@ -4,7 +4,10 @@ import { assertOriginJSON } from '@/lib/csrf';
 import { query } from '@/lib/db';
 import { sendVerificationEmail } from '@/lib/mail';
 import { randomBytes, createHash } from 'crypto';
-import { hashPassword } from '@/lib/hash';
+import { hashPassword } from '@/lib/auth/password';
+
+// ✅ анти-брутфорс
+import { makeKey, registerFail, resetCounter } from '@/lib/anti-bruteforce';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,6 +17,25 @@ type ReqBody = {
   name?: string;
   password?: string;
 };
+
+// ✅ ДОБАВИТЬ: функция задержки
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Небольшой helper для IP; замени на свой импорт, если он у тебя уже есть
+function getClientIp(req: NextRequest): string {
+  const xf = req.headers.get('x-forwarded-for');
+  if (xf) {
+    const ip = xf.split(',')[0]?.trim();
+    if (ip) return ip;
+  }
+  const xr = req.headers.get('x-real-ip');
+  if (xr) return xr;
+  const cf = req.headers.get('cf-connecting-ip');
+  if (cf) return cf;
+  return (req as any).ip || '0.0.0.0';
+}
 
 function getBaseUrl(req: Request) {
   const xfProto = req.headers.get('x-forwarded-proto');
@@ -40,12 +62,12 @@ async function generateUsername(base: string): Promise<string> {
       `SELECT EXISTS(SELECT 1 FROM users WHERE LOWER(username) = LOWER($1))`,
       [candidate]
     );
-    
+
     if (!rows[0]?.exists) return candidate;
-    
+
     candidate = `${sanitized}${i}`;
   }
-  
+
   // Fallback: добавляем timestamp
   return `${sanitized}_${Date.now().toString(36)}`;
 }
@@ -61,6 +83,23 @@ async function storeEmailToken(email: string, tokenHash: string, ttlHours = 24) 
 export async function POST(req: NextRequest) {
   // CSRF-защита
   assertOriginJSON(req);
+
+  // ✅ rate limiting / anti-bruteforce
+  const ip = getClientIp(req);
+  const key = makeKey(ip, 'register');
+
+  const delay = registerFail(key);
+  if (delay > 5000) {
+    return NextResponse.json(
+      { ok: false, error: 'too_many_attempts' },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': '60',
+        },
+      }
+    );
+  }
 
   try {
     if (!process.env.RESEND_API_KEY) {
@@ -95,14 +134,14 @@ export async function POST(req: NextRequest) {
       [email]
     );
 
+    // ✅ ИСПРАВЛЕНИЕ: убрать дублирование условия
     if (existingUser.rows.length > 0) {
-      if (existingUser.rows[0].email_verified_at) {
-        return NextResponse.json(
-          { ok: false, error: 'email_already_registered' },
-          { status: 400 }
-        );
-      }
-      // Если существует, но не подтвержден — можно повторно отправить письмо
+      // Не раскрываем, существует ли email
+      await sleep(1000); // Искусственная задержка для совпадения таймингов
+      return NextResponse.json(
+        { ok: true }, // Всегда возвращаем успех
+        { status: 200 }
+      );
     }
 
     // ✅ Генерируем username из email или name
@@ -145,7 +184,7 @@ export async function POST(req: NextRequest) {
       await query('COMMIT');
     } catch (error: any) {
       await query('ROLLBACK');
-      
+
       // Обработка конфликта username
       if (error?.code === '23505' && error?.constraint?.includes('username')) {
         return NextResponse.json(
@@ -153,7 +192,7 @@ export async function POST(req: NextRequest) {
           { status: 500 }
         );
       }
-      
+
       throw error;
     }
 
@@ -169,11 +208,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ✅ при успехе — сбрасываем счётчик брутфорса
+    resetCounter(key);
+
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     console.error('[POST /api/auth/register] fatal:', e);
+    
+    // ✅ ИСПРАВЛЕНИЕ: не отправлять e?.message в production
+    const isProduction = process.env.NODE_ENV === 'production';
+    
     return NextResponse.json(
-      { ok: false, error: 'internal', message: e?.message },
+      { 
+        ok: false, 
+        error: 'internal',
+        ...(isProduction ? {} : { message: e?.message })
+      },
       { status: 500 }
     );
   }

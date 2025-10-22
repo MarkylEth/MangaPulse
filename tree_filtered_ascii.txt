@@ -561,7 +561,6 @@
 |   +-- anti-bruteforce.ts
 |   +-- asList.ts
 |   +-- auth.ts
-|   +-- authx.ts
 |   +-- csrf.ts
 |   +-- db.ts
 |   +-- email-templates.ts
@@ -590,18 +589,10 @@
 |   +-- auth
 |   |   +-- config.ts
 |   |   +-- email.ts
-|   |   +-- getAuthUser.ts
-|   |   +-- get-user.ts
-|   |   +-- guards.ts
-|   |   +-- navigation.ts
 |   |   +-- password.ts
-|   |   +-- permissions.ts
 |   |   +-- route-guards.ts
-|   |   +-- server.ts
 |   |   +-- session.ts
 |   |   +-- tokens.ts
-|   |   \-- context
-|   |       +-- AddTitleModal.tsx
 |   +-- catalog
 |   |   +-- constants.ts
 |   |   +-- filters.ts

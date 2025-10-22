@@ -3,20 +3,34 @@ import { NextRequest, NextResponse } from 'next/server';
 import { assertOriginJSON } from '@/lib/csrf';
 import { query } from '@/lib/db';
 import crypto from 'crypto';
-import jwt from 'jsonwebtoken';
-import { sendEmailResend, APP_URL, FROM } from '@/lib/resend';
+import { sendEmailResend, APP_URL } from '@/lib/resend';
 import { getPasswordResetEmailHtml, getPasswordResetEmailText } from '@/lib/email-templates';
+
+// ✅ анти-брутфорс
+import { makeKey, registerFail } from '@/lib/anti-bruteforce';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const SECRET = process.env.AUTH_JWT_SECRET!;
+// ✅ простой генератор токена без JWT
+function makeToken() {
+  const rawToken = crypto.randomBytes(32).toString('hex'); // 64 символа
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+  return { token: rawToken, tokenHash };
+}
 
-function makeToken(email: string) {
-  const nonce = crypto.randomUUID();
-  const token = jwt.sign({ email, nonce, t: 'pwd' }, SECRET, { expiresIn: '60m' });
-  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-  return { token, tokenHash };
+// helper IP; если есть свой — импортни его и этот удаляй
+function getClientIp(req: NextRequest): string {
+  const xf = req.headers.get('x-forwarded-for');
+  if (xf) {
+    const ip = xf.split(',')[0]?.trim();
+    if (ip) return ip;
+  }
+  const xr = req.headers.get('x-real-ip');
+  if (xr) return xr;
+  const cf = req.headers.get('cf-connecting-ip');
+  if (cf) return cf;
+  return (req as any).ip || '0.0.0.0';
 }
 
 export async function POST(req: NextRequest) {
@@ -25,27 +39,48 @@ export async function POST(req: NextRequest) {
 
   try {
     const { email } = await req.json();
-    if (!email) return NextResponse.json({ ok: false, error: 'email_required' }, { status: 400 });
+    if (!email) {
+      return NextResponse.json({ ok: false, error: 'email_required' }, { status: 400 });
+    }
 
     const normalized = String(email).trim().toLowerCase();
 
-    // проверим, есть ли такой пользователь — но ответ всегда 200 (без утечки)
-    const u = await query(`select id from public.users where email = $1 limit 1`, [normalized]);
+    // ✅ rate limiting (аналогично register)
+    const ip = getClientIp(req);
+    const key = makeKey(ip, normalized);
+    const delay = registerFail(key);
+    if (delay > 5000) {
+      return NextResponse.json(
+        { ok: false, error: 'too_many_attempts' },
+        { status: 429 }
+      );
+    }
 
-    // генерируем токен в любом случае (но письмо отправим только если юзер есть)
-    const { token, tokenHash } = makeToken(normalized);
-
-    // чистим старые токены этого email (не обязательно, но аккуратно)
-    await query(`delete from public.auth_password_tokens where email = $1 or expires_at < now()`, [normalized]).catch(() => {});
-
-    // сохраняем новый одноразовый токен (1 час)
-    await query(
-      `insert into public.auth_password_tokens (email, token_hash, expires_at)
-       values ($1, $2, now() + interval '60 minutes')`,
-      [normalized, tokenHash]
+    // проверяем пользователя — но ответ ВСЕГДА 200 (без утечки существования)
+    const u = await query<{ id: string }>(
+      `SELECT id FROM public.users WHERE email = $1 LIMIT 1`,
+      [normalized]
     );
 
-    if (u.rowCount && u.rowCount > 0) {
+    // генерируем токен всегда (письмо отправим только если юзер есть)
+    const { token, tokenHash } = makeToken();
+    const userId = u.rows[0]?.id;
+
+    if (userId) {
+      // ❗ чистим старые токены этого пользователя (и/или протухшие)
+      await query(
+        `DELETE FROM public.password_resets WHERE user_id = $1`,
+        [userId]
+      );
+
+      // сохраняем новый одноразовый токен (TTL 60 минут)
+      await query(
+        `INSERT INTO public.password_resets (user_id, token_hash, expires_at)
+         VALUES ($1, $2, now() + interval '60 minutes')`,
+        [userId, tokenHash]
+      );
+
+      // отправляем письмо только если пользователь существует
       const link = `${APP_URL}/reset-password?token=${encodeURIComponent(token)}`;
       await sendEmailResend({
         to: normalized,
@@ -55,10 +90,13 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // всегда ок — чтобы нельзя было по ответу понять, есть ли email
+    // всегда ok — чтобы нельзя было по ответу понять, есть ли email
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     console.error('[POST /api/auth/password/request] fatal:', e);
-    return NextResponse.json({ ok: false, error: 'internal', message: e?.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: 'internal', message: e?.message },
+      { status: 500 }
+    );
   }
 }

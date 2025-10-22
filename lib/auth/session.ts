@@ -1,6 +1,7 @@
 // lib/auth/session.ts
 import 'server-only';
-import jwt from 'jsonwebtoken';
+import jwt, { type JwtPayload } from 'jsonwebtoken';
+import { randomUUID } from 'node:crypto';
 import { cookies } from 'next/headers';
 import type { NextRequest, NextResponse } from 'next/server';
 import { SESSION_COOKIE, SESSION_JWT_SECRET, shouldUseSecure } from './config';
@@ -9,6 +10,7 @@ import { SESSION_COOKIE, SESSION_JWT_SECRET, shouldUseSecure } from './config';
 export type SessionPayload = {
   sub: string; // user_id (UUID)
   role?: 'admin' | 'moderator' | 'user';
+  jti?: string; // jwt id (будет вшит при подписании)
 };
 
 export type AuthUser = {
@@ -21,20 +23,74 @@ export type AuthUser = {
 };
 
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
+const CLOCK_SKEW_SECONDS = 30;             // допуск на дрифт часов
 
 /* ==================== JWT OPERATIONS ==================== */
 export function signSession(payload: SessionPayload): string {
-  return jwt.sign(payload, SESSION_JWT_SECRET, { expiresIn: MAX_AGE_SECONDS });
+  // Вшиваем уникальный идентификатор токена (jti)
+  return jwt.sign(payload, SESSION_JWT_SECRET, {
+    expiresIn: MAX_AGE_SECONDS,
+    algorithm: 'HS256',
+    jwtid: randomUUID(),
+  });
 }
 
 export function verifySession(token?: string | null): SessionPayload | null {
   if (!token) return null;
   try {
-    return jwt.verify(token, SESSION_JWT_SECRET) as SessionPayload;
+    const decoded = jwt.verify(token, SESSION_JWT_SECRET, {
+      algorithms: ['HS256'],                // явная фиксация алгоритма
+      clockTolerance: CLOCK_SKEW_SECONDS,   // допускаем небольшой дрифт часов
+    }) as SessionPayload & JwtPayload;
+
+    // Дополнительная явная проверка срока действия (поверх встроенной)
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (typeof decoded.exp === 'number' && decoded.exp <= nowSec - CLOCK_SKEW_SECONDS) {
+      return null;
+    }
+    // Если когда-нибудь начнёшь ставить nbf — аккуратно отвергаем токены "из будущего"
+    if (typeof decoded.nbf === 'number' && decoded.nbf > nowSec + CLOCK_SKEW_SECONDS) {
+      return null;
+    }
+
+    // Базовая валидация полезной нагрузки
+    if (!decoded?.sub || typeof decoded.sub !== 'string') return null;
+
+    return { sub: decoded.sub, role: decoded.role };
   } catch {
     return null;
   }
 }
+
+export async function verifySessionStrict(token?: string | null): Promise<SessionPayload | null> {
+  if (!token) return null;
+  try {
+    const decoded = jwt.verify(token, SESSION_JWT_SECRET, {
+      algorithms: ['HS256'],
+      clockTolerance: CLOCK_SKEW_SECONDS,
+    }) as SessionPayload & JwtPayload & { jti?: string };
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (typeof decoded.exp === 'number' && decoded.exp <= nowSec - CLOCK_SKEW_SECONDS) return null;
+    if (typeof decoded.nbf === 'number' && decoded.nbf >  nowSec + CLOCK_SKEW_SECONDS) return null;
+    if (!decoded?.sub || typeof decoded.sub !== 'string') return null;
+
+    // 🔎 Проверка в blacklist
+    if (decoded.jti) {
+      const { query } = await import('@/lib/db');
+      const { rows } = await query<{ revoked: boolean }>(
+        `SELECT EXISTS (SELECT 1 FROM revoked_tokens WHERE jti = $1) AS revoked`,
+        [decoded.jti]
+      );
+      if (rows?.[0]?.revoked === true) return null; // токен отозван
+    }
+
+    return { sub: decoded.sub, role: decoded.role, jti: decoded.jti };
+  } catch {
+    return null;
+  }
+}
+
 
 /* ==================== COOKIE OPERATIONS ==================== */
 export async function getSessionToken(): Promise<string | null> {
@@ -73,7 +129,7 @@ export function clearSessionCookie(res: NextResponse, req?: NextRequest) {
  */
 export async function getSessionUser(): Promise<AuthUser | null> {
   const token = await getSessionToken();
-  const payload = verifySession(token);
+  const payload = await verifySessionStrict(token);
   if (!payload?.sub) return null;
 
   // ✅ Одним запросом получаем всё нужное

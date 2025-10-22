@@ -1,10 +1,9 @@
 // app/layout.tsx
-import './globals.css';                 // ← ОБЯЗАТЕЛЬНО: глобальные стили только здесь
+import './globals.css';
 import type { Metadata } from 'next';
 import Providers from './providers';
-import { getSessionUser } from '@/lib/auth/session'
+import { getSessionUser } from '@/lib/auth/session';
 
-// (не обязательно, но полезно, если читаешь куки/сессию)
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -18,7 +17,19 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await getSessionUser().catch(() => null);
+  const dbUser = await getSessionUser().catch(() => null);
+
+  // ✅ Явно формируем безопасный объект (только whitelisted поля)
+  const user = dbUser
+    ? {
+        id: dbUser.id,
+        email: dbUser.email,
+        username: dbUser.username,
+        display_name: dbUser.display_name ?? null,
+        avatar_url: dbUser.avatar_url ?? null,
+        role: dbUser.role ?? 'user',
+      }
+    : null;
 
   return (
     <html lang="ru" suppressHydrationWarning>

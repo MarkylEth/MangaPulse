@@ -24,8 +24,8 @@ export async function GET(req: Request) {
 
     const tokenHash = createHash('sha256').update(token).digest('hex');
 
-    // ищем одноразовый токен в новой таблице
-    let r = await query<{
+    // Ищем токен ТОЛЬКО в новой таблице
+    const r = await query<{
       id: number;
       email: string;
       expires_at: string;
@@ -38,23 +38,12 @@ export async function GET(req: Request) {
       [tokenHash],
     );
 
-    if (r.rowCount === 0) {
-      // запасной путь — старая таблица, если вдруг используется
-      r = await query(
-        `select id, email, expires_at, used_at
-           from public.auth_tokens
-          where token = $1 and type = 'email_verify'
-          limit 1`,
-        [token],
-      );
-    }
-
     const row = r.rows?.[0];
     if (!row) {
       return NextResponse.json({ ok: false, error: 'invalid_token' }, { status: 400 });
     }
 
-    // если уже использован — просто на главную с флагом
+    // Уже использован — просто редиректим с флагом
     if (row.used_at) {
       return NextResponse.redirect(toUrl('/?verified=1'));
     }
@@ -63,21 +52,15 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: 'token_expired' }, { status: 400 });
     }
 
-    // помечаем использованным (пытаемся в обе таблицы — на случай fallback)
+    // Помечаем использованным
     await query(
       `update public.auth_email_tokens
           set used_at = now()
         where token_hash = $1`,
       [tokenHash],
-    ).catch(() => {});
-    await query(
-      `update public.auth_tokens
-          set used_at = now()
-        where token = $1 and type = 'email_verify'`,
-      [token],
-    ).catch(() => {});
+    );
 
-    // проставляем email_verified_at у пользователя
+    // Проставляем email_verified_at у пользователя
     await query(
       `update public.users
           set email_verified_at = now()
@@ -85,7 +68,7 @@ export async function GET(req: Request) {
       [row.email],
     );
 
-    // ✅ редирект на ГЛАВНУЮ (а не на /login)
+    // ✅ Редирект на главную
     return NextResponse.redirect(toUrl('/?verified=1'));
   } catch (e: any) {
     console.error('[GET /api/auth/verify] fatal:', e);
