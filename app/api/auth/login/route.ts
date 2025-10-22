@@ -5,7 +5,8 @@ import { verifyPassword } from "@/lib/auth/password";
 import { signSession, setSessionCookie } from "@/lib/auth/session";
 import { assertOriginJSON } from "@/lib/csrf";
 import { LoginSchema } from "@/lib/validate";
-import { makeKey, registerFail, resetCounter } from "@/lib/anti-bruteforce"; 
+import { makeKey, registerFail, resetCounter } from "@/lib/anti-bruteforce";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,6 @@ function json(data: unknown, init?: number | ResponseInit) {
     typeof init === "number"
       ? NextResponse.json(data, { status: init })
       : NextResponse.json(data, init);
-  // на всякий случай отключаем кеш
   res.headers.set("Cache-Control", "no-store");
   return res;
 }
@@ -23,7 +23,6 @@ function getClientIp(req: NextRequest) {
   return (
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     req.headers.get("x-real-ip") ||
-    
     (req as any).ip ||
     "local"
   );
@@ -47,26 +46,37 @@ export async function POST(req: NextRequest) {
     const { email, password } = parsed.data;
     const emailLower = email.toLowerCase();
 
-    // 3) Анти-брутфорс по IP+email (экспоненциальная задержка при фейле)
+    // 3) Анти-брутфорс по IP+email
     const ip = getClientIp(req);
     const key = makeKey(ip, emailLower);
 
-    // 4) Поиск пользователя
+    // 4) ✅ ИСПРАВЛЕНО: Поиск пользователя с JOIN profiles
     const r = await query<{
       id: string;
       email: string | null;
-      name: string | null;
+      username: string | null;
       password_hash: string | null;
+      display_name: string | null;
+      avatar_url: string | null;
+      role: 'admin' | 'moderator' | 'user';
     }>(
-      `SELECT id, email, name, password_hash
-         FROM public.users
-        WHERE email = $1
-        LIMIT 1`,
+      `SELECT 
+        u.id, 
+        u.email, 
+        u.username,
+        u.password_hash,
+        p.display_name,
+        p.avatar_url,
+        COALESCE(p.role, 'user') as role
+       FROM users u
+       LEFT JOIN profiles p ON p.user_id = u.id
+       WHERE u.email = $1
+       LIMIT 1`,
       [emailLower]
     );
     const u = r.rows[0];
 
-    // 5) Неверный email/нет пароля — откладываем и даём 401
+    // 5) Неверный email/нет пароля → откладываем и даём 401
     if (!u?.password_hash) {
       await sleep(registerFail(key));
       return json({ ok: false, error: "invalid_credentials" }, 401);
@@ -82,20 +92,25 @@ export async function POST(req: NextRequest) {
     // 7) Успех → сброс счётчика
     resetCounter(key);
 
-    // 8) Роль из profiles (по умолчанию user)
-    const roleRes = await query<{ role: "admin" | "moderator" | "user" }>(
-      `SELECT role FROM public.profiles WHERE id = $1 LIMIT 1`,
-      [u.id]
-    );
-    const role = roleRes.rows[0]?.role ?? "user";
+    // 8) ✅ Подписываем mp_session с ролью
+    const token = signSession({ 
+      sub: u.id, 
+      role: u.role 
+    });
 
-    // 9) Подписываем mp_session и выставляем куку
-    const token = signSession({ sub: u.id, role });
     const res = json({
       ok: true,
-      user: { id: u.id, email: u.email, name: u.name, role },
+      user: {
+        id: u.id,
+        email: u.email,
+        username: u.username,
+        display_name: u.display_name,
+        avatar_url: u.avatar_url,
+        role: u.role,
+      },
     });
-    setSessionCookie(res, token);
+
+    setSessionCookie(res, token, req);
 
     return res;
   } catch (e: any) {

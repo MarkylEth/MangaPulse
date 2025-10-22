@@ -17,7 +17,7 @@ export async function GET(
   try {
     // 1) Сначала получаем user_id по username
     const userResult = await query<{ id: string }>(
-      `SELECT id FROM public.profiles WHERE lower(username) = lower($1) LIMIT 1`,
+      `SELECT id::text FROM public.users WHERE lower(username) = lower($1)`,
       [handle]
     );
 

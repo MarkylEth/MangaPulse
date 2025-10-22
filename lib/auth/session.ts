@@ -1,103 +1,140 @@
 // lib/auth/session.ts
-import jwt from "jsonwebtoken";
-import type { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import 'server-only';
+import jwt from 'jsonwebtoken';
+import { cookies } from 'next/headers';
+import type { NextRequest, NextResponse } from 'next/server';
+import { SESSION_COOKIE, SESSION_JWT_SECRET, shouldUseSecure } from './config';
 
-import {
-  SESSION_COOKIE,
-  SESSION_JWT_SECRET,
-  shouldUseSecure,
-} from "@/lib/auth/config";
-
+/* ==================== TYPES ==================== */
 export type SessionPayload = {
-  sub: string;                                // app_user_id
-  role?: "admin" | "moderator" | "user";
+  sub: string; // user_id (UUID)
+  role?: 'admin' | 'moderator' | 'user';
 };
 
-const MAX_AGE = 60 * 60 * 24 * 30;
+export type AuthUser = {
+  id: string;
+  email: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  role: 'admin' | 'moderator' | 'user';
+};
 
+const MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
+
+/* ==================== JWT OPERATIONS ==================== */
 export function signSession(payload: SessionPayload): string {
-  return jwt.sign(payload, SESSION_JWT_SECRET, { expiresIn: MAX_AGE });
+  return jwt.sign(payload, SESSION_JWT_SECRET, { expiresIn: MAX_AGE_SECONDS });
 }
 
-export function verifySession<T extends SessionPayload = SessionPayload>(token?: string | null): T | null {
+export function verifySession(token?: string | null): SessionPayload | null {
   if (!token) return null;
   try {
-    return jwt.verify(token, SESSION_JWT_SECRET) as T;
+    return jwt.verify(token, SESSION_JWT_SECRET) as SessionPayload;
   } catch {
     return null;
   }
 }
 
-export function setSessionCookie(res: NextResponse, token: string) {
+/* ==================== COOKIE OPERATIONS ==================== */
+export async function getSessionToken(): Promise<string | null> {
+  const store = await cookies();
+  return store.get(SESSION_COOKIE)?.value ?? null;
+}
+
+export function setSessionCookie(res: NextResponse, token: string, req?: NextRequest) {
   res.cookies.set({
     name: SESSION_COOKIE,
     value: token,
     httpOnly: true,
-    sameSite: "lax",
-    secure: shouldUseSecure(),
-    path: "/",
-    maxAge: MAX_AGE,
+    secure: shouldUseSecure(req),
+    sameSite: 'lax',
+    path: '/',
+    maxAge: MAX_AGE_SECONDS,
   });
 }
 
-export function clearSessionCookie(res: NextResponse) {
+export function clearSessionCookie(res: NextResponse, req?: NextRequest) {
   res.cookies.set({
     name: SESSION_COOKIE,
-    value: "",
+    value: '',
     httpOnly: true,
-    sameSite: "lax",
-    secure: shouldUseSecure(),
-    path: "/",
+    secure: shouldUseSecure(req),
+    sameSite: 'lax',
+    path: '/',
     maxAge: 0,
   });
 }
 
-// === Удобства ===
-export function createSession(res: NextResponse, token: string) {
-  setSessionCookie(res, token);
-}
-export function destroySession(res: NextResponse) {
-  clearSessionCookie(res);
+/* ==================== USER OPERATIONS ==================== */
+/**
+ * ✅ ЕДИНСТВЕННАЯ функция для получения пользователя из сессии
+ * Использовать везде: в app router, api routes, middleware
+ */
+export async function getSessionUser(): Promise<AuthUser | null> {
+  const token = await getSessionToken();
+  const payload = verifySession(token);
+  if (!payload?.sub) return null;
+
+  // ✅ Одним запросом получаем всё нужное
+  const { query } = await import('@/lib/db');
+  const { rows } = await query<{
+    id: string;
+    email: string;
+    username: string;
+    display_name: string | null;
+    avatar_url: string | null;
+    role: 'admin' | 'moderator' | 'user';
+  }>(
+    `SELECT 
+      u.id,
+      u.email,
+      u.username,
+      p.display_name,
+      p.avatar_url,
+      COALESCE(p.role, 'user') as role
+    FROM users u
+    LEFT JOIN profiles p ON p.user_id = u.id
+    WHERE u.id = $1
+    LIMIT 1`,
+    [payload.sub]
+  );
+
+  if (!rows[0]) return null;
+
+  return {
+    id: rows[0].id,
+    email: rows[0].email,
+    username: rows[0].username,
+    display_name: rows[0].display_name,
+    avatar_url: rows[0].avatar_url,
+    role: rows[0].role,
+  };
 }
 
-/** Универсально получаем cookie store (работает и в Next 14, и в Next 15) */
-async function getCookieStore(): Promise<Readonly<{
-  get(name: string): { name: string; value: string } | undefined;
-}>> {
-  const jar: any = cookies();               // в Next 15 это Promise
-  if (typeof jar?.then === "function") {
-    return await jar;                       // Next 15
+/* ==================== CONVENIENCE FUNCTIONS ==================== */
+export async function requireAuth(): Promise<AuthUser> {
+  const user = await getSessionUser();
+  if (!user) {
+    throw new Error('UNAUTHORIZED');
   }
-  return jar;                               // Next 13/14
+  return user;
 }
 
-/** Прямое чтение токена из куки */
-export async function readSessionTokenFromCookies(): Promise<string | null> {
-  const jar = await getCookieStore();
-  return jar.get(SESSION_COOKIE)?.value ?? null;
+export async function requireRole(role: 'admin' | 'moderator'): Promise<AuthUser> {
+  const user = await requireAuth();
+  if (role === 'admin' && user.role !== 'admin') {
+    throw new Error('FORBIDDEN');
+  }
+  if (role === 'moderator' && user.role !== 'admin' && user.role !== 'moderator') {
+    throw new Error('FORBIDDEN');
+  }
+  return user;
 }
 
-/* ========================================
-   ✅ НОВАЯ ФУНКЦИЯ ДЛЯ API ROUTES
-   ======================================== */
-
-/**
- * Получает сессию из cookies и возвращает расшифрованные данные
- * Используй в API routes для проверки авторизации
- */
-export async function getSessionFromCookies(): Promise<SessionPayload | null> {
-  const token = await readSessionTokenFromCookies();
-  if (!token) return null;
-  
-  return verifySession(token);
-}
-
-/**
- * Возвращает userId из сессии (алиас для sub)
- * Удобная обёртка для использования в API
- */
-export async function getUserIdFromSession(): Promise<string | null> {
-  const session = await getSessionFromCookies();
-  return session?.sub ?? null;
-}
+/* ==================== LEGACY ALIASES (для обратной совместимости) ==================== */
+export const getAuthUser = getSessionUser;
+export const getCurrentUser = getSessionUser;
+export const readSessionTokenFromCookies = getSessionToken;
+export const createSession = setSessionCookie;
+export const destroySession = clearSessionCookie;

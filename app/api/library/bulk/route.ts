@@ -4,7 +4,7 @@ import { query } from '@/lib/db';
 // Вариант А (унифицировано с другими роутами):
 // import { getAuthUser } from '@/lib/auth/route-guards';
 // Вариант Б (как у тебя сейчас, если внутри читаются cookies()):
-import { getAuthUser } from '@/lib/auth/getAuthUser';
+import { getSessionUser } from '@/lib/auth/session'
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -38,7 +38,7 @@ function normStatus(s: unknown): ReadStatus | null | undefined {
 export async function POST(req: NextRequest) {
   try {
     // Вариант А: const me = await getAuthUser(req);
-    const me = await getAuthUser();
+    const me = await getSessionUser();
     const userId = me?.id ?? null;
     if (!userId) return err('auth', 401);
 

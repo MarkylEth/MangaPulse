@@ -1,30 +1,37 @@
-//components\auth\AuthProvider.tsx
+// components/auth/AuthProvider.tsx
 'use client';
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
+/* ==================== TYPES ==================== */
+// ✅ ЕДИНЫЙ тип для всего приложения
 export type AuthUser = {
-  id: string | number;
-  email?: string | null;
-  name?: string | null;
-  username?: string | null;
-  nickname?: string | null;
-  role?: string | null;
-  avatar_url?: string | null;
+  id: string;
+  email: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  role: 'admin' | 'moderator' | 'user';
 };
 
-type AuthCtx = {
+type AuthContextValue = {
   user: AuthUser | null;
+  isLoading: boolean;
   isGuest: boolean;
-  setUser: (u: AuthUser | null) => void;
+  setUser: (user: AuthUser | null) => void;
+  refresh: () => Promise<void>;
 };
 
-const Ctx = createContext<AuthCtx>({
+/* ==================== CONTEXT ==================== */
+const AuthContext = createContext<AuthContextValue>({
   user: null,
+  isLoading: true,
   isGuest: true,
   setUser: () => {},
+  refresh: async () => {},
 });
 
+/* ==================== PROVIDER ==================== */
 export function AuthProvider({
   children,
   initialUser = null,
@@ -32,84 +39,126 @@ export function AuthProvider({
   children: React.ReactNode;
   initialUser?: AuthUser | null;
 }) {
-  const [user, setUser] = useState<AuthUser | null>(initialUser ?? null);
+  const [user, setUserState] = useState<AuthUser | null>(initialUser);
+  const [isLoading, setIsLoading] = useState(!initialUser);
+
+  const fetchUser = async () => {
+    try {
+      const response = await fetch('/api/auth/me', {
+        credentials: 'include',
+        cache: 'no-store',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data?.user) {
+        setUserState(null);
+        try {
+          localStorage.removeItem('mp:user');
+          sessionStorage.removeItem('mp:user');
+        } catch {}
+        return;
+      }
+
+      // ✅ Нормализуем данные под единый тип
+      const normalizedUser: AuthUser = {
+        id: data.user.id,
+        email: data.user.email,
+        username: data.user.username,
+        display_name: data.user.display_name ?? null,
+        avatar_url: data.user.avatar_url ?? null,
+        role: data.user.role ?? 'user',
+      };
+
+      setUserState(normalizedUser);
+
+      try {
+        localStorage.setItem('mp:user', JSON.stringify(normalizedUser));
+      } catch {}
+    } catch (error) {
+      console.error('[AuthProvider] Failed to fetch user:', error);
+      setUserState(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    let alive = true;
+    if (!initialUser) {
+      fetchUser();
+    }
+  }, [initialUser]);
 
-    (async () => {
-      try {
-        const r = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
-        const j = await r.json().catch(() => ({} as any));
-
-        // если эндпоинт вернул user:null — гость
-        if (!r.ok || !j?.user) {
-          if (alive) setUser(null);
-          try {
-            localStorage.removeItem('mp:user');
-            sessionStorage.removeItem('mp:user');
-          } catch {}
-          return;
-        }
-
-        // базовые поля из user
-        let u: AuthUser = {
-          id: j.user.id,
-          email: j.user.email ?? null,
-          name: j.user.name ?? null,
-          username: j.user.username ?? null,
-          nickname: j.user.nickname ?? null,
-          role: j.user.role ?? null,
-          avatar_url: j.user.avatar_url ?? null,
-        };
-
-        // если сервер уже объединяет profile — аккуратно доклеим
-        const p = j.profile ?? null;
-        if (p) {
-          u = {
-            ...u,
-            username: p.username ?? u.username ?? null,
-            nickname: p.nickname ?? u.nickname ?? p.username ?? null,
-            avatar_url: p.avatar_url ?? u.avatar_url ?? null,
-            role: p.role ?? u.role ?? null,
-          };
-        }
-
-        if (alive) {
-          setUser(u);
-          try {
-            localStorage.setItem('mp:user', JSON.stringify(u));
-          } catch {}
-        }
-      } catch {
-        if (alive) setUser(null);
+  const setUser = (newUser: AuthUser | null) => {
+    setUserState(newUser);
+    try {
+      if (newUser) {
+        localStorage.setItem('mp:user', JSON.stringify(newUser));
+      } else {
+        localStorage.removeItem('mp:user');
+        sessionStorage.removeItem('mp:user');
       }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, []);
+    } catch {}
+  };
 
   const value = useMemo(
     () => ({
       user,
+      isLoading,
       isGuest: !user?.id,
-      setUser: (u: AuthUser | null) => {
-        setUser(u);
-        try {
-          if (u) localStorage.setItem('mp:user', JSON.stringify(u));
-          else {
-            localStorage.removeItem('mp:user');
-            sessionStorage.removeItem('mp:user');
-          }
-        } catch {}
-      },
+      setUser,
+      refresh: fetchUser,
     }),
-    [user]
+    [user, isLoading]
   );
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export const useAuth = () => useContext(Ctx);
+/* ==================== HOOKS ==================== */
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within AuthProvider');
+  }
+  return context;
+}
+
+/**
+ * ✅ Хук для защищённых страниц
+ * Автоматически редиректит на /login если не авторизован
+ */
+export function useRequireAuth() {
+  const { user, isLoading } = useAuth();
+  const router = typeof window !== 'undefined' ? require('next/navigation').useRouter() : null;
+
+  useEffect(() => {
+    if (!isLoading && !user && router) {
+      router.push('/login');
+    }
+  }, [user, isLoading, router]);
+
+  return { user, isLoading };
+}
+
+/**
+ * ✅ Хук для проверки роли
+ */
+export function useRequireRole(role: 'admin' | 'moderator') {
+  const { user, isLoading } = useAuth();
+  const router = typeof window !== 'undefined' ? require('next/navigation').useRouter() : null;
+
+  const hasAccess = useMemo(() => {
+    if (!user) return false;
+    if (role === 'admin') return user.role === 'admin';
+    return user.role === 'admin' || user.role === 'moderator';
+  }, [user, role]);
+
+  useEffect(() => {
+    if (!isLoading && !hasAccess && router) {
+      router.push('/');
+    }
+  }, [hasAccess, isLoading, router]);
+
+  return { user, hasAccess, isLoading };
+}

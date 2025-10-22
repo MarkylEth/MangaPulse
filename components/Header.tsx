@@ -40,6 +40,8 @@ const ThemedLogo = ({ className = '' }: { className?: string }) => {
   );
 };
 
+
+
 export function Header({
   searchQuery = '',
   onSearchChange,
@@ -53,15 +55,17 @@ export function Header({
 
   const { user, isGuest, setUser } = useAuth();
 
-  // ✅ ИСПРАВЛЕНИЕ: используем username вместо email
   const profileName = useMemo(() => {
-    // ✅ ТОЛЬКО username для URL профиля!
-    return user?.username ? String(user.username) : null;
+    // Приоритет: username (для URL) или display_name (для отображения)
+    if (user?.username) return String(user.username);
+    if (user?.display_name) return String(user.display_name);
+    if (user?.email) return String(user.email).split('@')[0];
+    return 'Гость';
   }, [user]);
-
-  // ✅ Для отображения в меню - используем nickname или username
+  
   const displayName = useMemo(() => {
-    if (user?.nickname) return String(user.nickname);
+    // Для UI показываем display_name или username
+    if (user?.display_name) return String(user.display_name);
     if (user?.username) return String(user.username);
     if (user?.email) return String(user.email).split('@')[0];
     return 'Гость';

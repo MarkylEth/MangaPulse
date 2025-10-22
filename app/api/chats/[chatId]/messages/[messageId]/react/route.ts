@@ -1,6 +1,6 @@
 // app/api/chats/[chatId]/messages/[messageId]/react/route.ts
 import { NextResponse } from 'next/server';
-import { getAuthUser } from '@/lib/auth';
+import { getSessionUser } from '@/lib/auth/session'
 import { query } from '@/lib/db';
 import { pushReaction } from '@/lib/realtime/sse-broker';
 
@@ -17,7 +17,7 @@ async function ensureMember(userId: string, chatId: number) {
 
 export async function POST(req: Request, ctx: { params: { chatId: string; messageId: string } }) {
   try {
-    const me = await getAuthUser();
+    const me = await getSessionUser();
     if (!me?.id) return NextResponse.json({ ok: false, message: 'unauthorized' }, { status: 401 });
 
     const chatId = Number(ctx.params.chatId);

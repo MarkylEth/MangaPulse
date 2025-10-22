@@ -1,6 +1,6 @@
 // app/api/chats/list/route.ts
 import { NextResponse } from 'next/server';
-import { getAuthUser } from '@/lib/auth';
+import { getSessionUser } from '@/lib/auth/session'
 import { query } from '@/lib/db';
 
 export const runtime = 'nodejs';
@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const me = await getAuthUser();
+    const me = await getSessionUser();
     if (!me?.id) {
       return NextResponse.json({ ok: false, message: 'unauthorized' }, { status: 401 });
     }

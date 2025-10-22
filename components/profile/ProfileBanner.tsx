@@ -10,6 +10,9 @@ export default function ProfileBanner({
   canEdit: boolean;
   onEdit: () => void;
 }) {
+  // ✅ ИСПРАВЛЕНО: используем display_name вместо full_name
+  const displayName = (profile.display_name ?? '').trim() || profile.username;
+
   return (
     <div className="rounded-3xl overflow-hidden bg-card border border-border/50 shadow-lg">
       {/* Banner */}
@@ -51,10 +54,10 @@ export default function ProfileBanner({
             </div>
           </div>
 
-          {/* Name & Username (поднято выше) */}
+          {/* Name & Username */}
           <div className="min-w-0 -mt-1 sm:-mt-2 pt-1">
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground mb-0.5 tracking-tight truncate">
-              {(profile.full_name ?? '').trim() || profile.username}
+              {displayName}
             </h1>
             <div className="text-sm sm:text-base text-muted-foreground">
               @{profile.username}

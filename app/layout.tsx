@@ -2,7 +2,7 @@
 import './globals.css';                 // ← ОБЯЗАТЕЛЬНО: глобальные стили только здесь
 import type { Metadata } from 'next';
 import Providers from './providers';
-import { getAuthUser } from '@/lib/auth/getAuthUser';
+import { getSessionUser } from '@/lib/auth/session'
 
 // (не обязательно, но полезно, если читаешь куки/сессию)
 export const dynamic = 'force-dynamic';
@@ -18,7 +18,7 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await getAuthUser().catch(() => null);
+  const user = await getSessionUser().catch(() => null);
 
   return (
     <html lang="ru" suppressHydrationWarning>

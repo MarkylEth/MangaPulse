@@ -6,49 +6,60 @@ import { signSession, setSessionCookie } from '@/lib/auth/session';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/** Простая транслитерация ru -> en для full_name */
-function translitRuToEn(s?: string | null): string | null {
-  if (!s) return null;
-  const map: Record<string, string> = {
-    а:'a', б:'b', в:'v', г:'g', д:'d', е:'e', ё:'yo', ж:'zh', з:'z',
-    и:'i', й:'y', к:'k', л:'l', м:'m', н:'n', о:'o', п:'p', р:'r', с:'s',
-    т:'t', у:'u', ф:'f', х:'kh', ц:'ts', ч:'ch', ш:'sh', щ:'shch', ъ:'',
-    ы:'y', ь:'', э:'e', ю:'yu', я:'ya',
-    А:'A', Б:'B', В:'V', Г:'G', Д:'D', Е:'E', Ё:'Yo', Ж:'Zh', З:'Z',
-    И:'I', Й:'Y', К:'K', Л:'L', М:'M', Н:'N', О:'O', П:'P', Р:'R', С:'S',
-    Т:'T', У:'U', Ф:'F', Х:'Kh', Ц:'Ts', Ч:'Ch', Ш:'Sh', Щ:'Shch', Ъ:'',
-    Ы:'Y', Ь:'', Э:'E', Ю:'Yu', Я:'Ya',
-  };
-  let out = '';
-  for (const ch of s) out += map[ch] ?? ch;
-  out = out.replace(/\s+/g, ' ').trim();
-  return out.slice(0, 60);
+function redirectWithError(origin: string, code: string, detail?: string) {
+  const url = new URL('/', origin);
+  url.searchParams.set('auth_error', code);
+  if (detail) url.searchParams.set('detail', detail.slice(0, 400));
+  return NextResponse.redirect(url);
 }
 
-function redir(origin: string, code: string, detail?: string) {
-  const u = new URL('/', origin);
-  u.searchParams.set('auth_error', code);
-  if (detail) u.searchParams.set('detail', detail.slice(0, 400));
-  return NextResponse.redirect(u);
+/**
+ * ✅ Генерирует уникальный username на основе email или имени
+ */
+async function generateUsername(base: string): Promise<string> {
+  const sanitized = base
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '')
+    .slice(0, 20) || 'user';
+
+  // Проверяем занятость
+  let candidate = sanitized;
+  for (let i = 1; i <= 100; i++) {
+    const { rows } = await query<{ exists: boolean }>(
+      `SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)`,
+      [candidate]
+    );
+    
+    if (!rows[0]?.exists) return candidate;
+    
+    candidate = `${sanitized}${i}`;
+  }
+  
+  // Fallback: добавляем timestamp
+  return `${sanitized}_${Date.now().toString(36)}`;
 }
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
-  const code  = url.searchParams.get('code')  || '';
+  const code = url.searchParams.get('code') || '';
   const state = url.searchParams.get('state') || '';
 
   try {
-    // 1) state -> verifier/redirect
-    const st = await query<{ code_verifier: string; redirect_to: string }>(
+    // 1) Проверяем state
+    const stateResult = await query<{ code_verifier: string; redirect_to: string }>(
       `DELETE FROM public.oauth_states
-         WHERE state = $1
-         RETURNING code_verifier, COALESCE(redirect_to,'/') AS redirect_to`,
+       WHERE state = $1
+       RETURNING code_verifier, COALESCE(redirect_to, '/') AS redirect_to`,
       [state]
     );
-    if (!st.rowCount || !code) return redir(url.origin, 'state', 'bad_state_or_code');
-    const { code_verifier, redirect_to } = st.rows[0];
+    
+    if (!stateResult.rowCount || !code) {
+      return redirectWithError(url.origin, 'invalid_state');
+    }
+    
+    const { code_verifier, redirect_to } = stateResult.rows[0];
 
-    // 2) обмен кода на токены (PKCE)
+    // 2) Обмениваем код на токены
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -61,88 +72,92 @@ export async function GET(req: NextRequest) {
         redirect_uri: `${url.origin}/api/auth/google/callback`,
       }),
     });
-    if (!tokenRes.ok) return redir(url.origin, 'token', `http_${tokenRes.status}`);
-    const tokens: any = await tokenRes.json();
-    if (!tokens?.access_token) return redir(url.origin, 'token', 'no_access_token');
 
-    // 3) userinfo (email/name), НО аватар дальше не используем
-    const meRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    if (!tokenRes.ok) {
+      return redirectWithError(url.origin, 'token_exchange_failed');
+    }
+
+    const tokens: any = await tokenRes.json();
+    if (!tokens?.access_token) {
+      return redirectWithError(url.origin, 'no_access_token');
+    }
+
+    // 3) Получаем данные пользователя
+    const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
-    if (!meRes.ok) return redir(url.origin, 'userinfo', `http_${meRes.status}`);
-    const me: { sub: string; email?: string; name?: string; picture?: string } = await meRes.json();
-    if (!me?.sub) return redir(url.origin, 'userinfo', 'no_sub');
 
-    // 4) найти/линкануть/создать
+    if (!userRes.ok) {
+      return redirectWithError(url.origin, 'userinfo_failed');
+    }
+
+    const googleUser: {
+      sub: string;
+      email?: string;
+      name?: string;
+      picture?: string;
+    } = await userRes.json();
+
+    if (!googleUser.sub) {
+      return redirectWithError(url.origin, 'no_google_sub');
+    }
+
     await query('BEGIN');
 
-    let uid: string | null = null;
+    let userId: string | null = null;
 
-    // 4.1: поиск по google_sub
-    const bySub = await query<{ id: string }>(
-      `SELECT id FROM public.users WHERE google_sub=$1 LIMIT 1`,
-      [me.sub]
+    // 4) Ищем существующего пользователя
+    const existing = await query<{ id: string }>(
+      `SELECT id FROM users WHERE google_sub = $1 OR email = $2 LIMIT 1`,
+      [googleUser.sub, googleUser.email]
     );
-    if (bySub.rowCount) uid = bySub.rows[0].id;
 
-    // 4.2: поиск по email и линковка sub
-    if (!uid && me.email) {
-      const byEmail = await query<{ id: string }>(
-        `SELECT id FROM public.users WHERE email=$1 LIMIT 1`,
-        [me.email]
+    if (existing.rowCount) {
+      userId = existing.rows[0].id;
+      
+      // ✅ Обновляем google_sub если нашли по email
+      await query(
+        `UPDATE users SET google_sub = $1 WHERE id = $2`,
+        [googleUser.sub, userId]
       );
-      if (byEmail.rowCount) {
-        uid = byEmail.rows[0].id;
-        await query(`UPDATE public.users SET google_sub=$1 WHERE id=$2`, [me.sub, uid]);
-      }
-    }
+    } else {
+      // 5) Создаём нового пользователя
+      const username = await generateUsername(
+        googleUser.email?.split('@')[0] || googleUser.name || 'user'
+      );
 
-    // 4.3: создать пользователя
-    if (!uid) {
-      const displayName = me.name ?? (me.email ? me.email.split('@')[0] : 'user');
-      const created = await query<{ id: string }>(
-        `INSERT INTO public.users (email, name, email_verified_at, google_sub, password_hash)
-         VALUES ($1,$2,now(),$3,NULL)
+      const newUser = await query<{ id: string }>(
+        `INSERT INTO users (email, username, google_sub, email_verified_at)
+         VALUES ($1, $2, $3, NOW())
          RETURNING id`,
-        [me.email ?? null, displayName, me.sub]
+        [googleUser.email || null, username, googleUser.sub]
       );
-      uid = created.rows[0].id;
+
+      userId = newUser.rows[0].id;
+
+      // ✅ Создаём профиль с аватаром из Google
+      await query(
+        `INSERT INTO profiles (user_id, display_name, avatar_url)
+         VALUES ($1, $2, $3)`,
+        [userId, googleUser.name || username, googleUser.picture || null]
+      );
     }
-
-    // 4.4: профиль — username не передаём (БД поставит DEFAULT public.mk_username()).
-    await query(
-      `INSERT INTO public.profiles (id) VALUES ($1)
-       ON CONFLICT (id) DO NOTHING`,
-      [uid]
-    );
-
-    // ВАЖНО: аватар НЕ трогаем. Обновляем только full_name (латиницей) и updated_at.
-    const fullNameEn = translitRuToEn(me.name ?? (me.email ? me.email.split('@')[0] : null));
-
-    await query(
-      `UPDATE public.profiles
-          SET full_name  = COALESCE($2, full_name),
-              updated_at = now()
-        WHERE id = $1`,
-      [uid, fullNameEn]
-    );
 
     await query('COMMIT');
 
-    // 5) сессия и редирект
-    const token = signSession({
-      // NB: если тип SessionPayload ограничивает только { sub, role? },
-      // расширь его или приведи тип, если хочешь включать email/name.
-      sub: uid!,
-      // email: me.email ?? null,
-      // name: fullNameEn ?? null,
-    } as any);
+    // 6) Создаём сессию
+    const token = signSession({ sub: userId });
+    const response = NextResponse.redirect(new URL(redirect_to || '/', url.origin));
+    setSessionCookie(response, token, req);
 
-    const res = NextResponse.redirect(new URL(redirect_to || '/', url.origin));
-    setSessionCookie(res, token);
-    return res;
-  } catch (e: any) {
-    try { await query('ROLLBACK'); } catch {}
-    return redir(url.origin, 'internal', e?.message || String(e));
+    return response;
+
+  } catch (error: any) {
+    try {
+      await query('ROLLBACK');
+    } catch {}
+    
+    console.error('[Google OAuth Error]', error);
+    return redirectWithError(url.origin, 'internal_error', error?.message);
   }
 }

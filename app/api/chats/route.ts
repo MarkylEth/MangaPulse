@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { getAuthUser } from '@/lib/auth';
+import { getSessionUser } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -41,7 +41,7 @@ async function findExistingDM(a: string, b: string) {
  * body: { type: 'dm', userId: '<uuid>' }
  */
 export async function POST(req: Request) {
-  const me = await getAuthUser();
+  const me = await getSessionUser();
   if (!me?.id) return NextResponse.json({ ok: false, message: 'unauthorized' }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));

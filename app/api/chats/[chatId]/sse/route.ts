@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthUser } from '@/lib/auth';
+import { getSessionUser } from '@/lib/auth/session'
 import { addClient } from '@/lib/realtime/sse-broker';
 import { query } from '@/lib/db';
 
@@ -16,7 +16,7 @@ async function ensureMember(userId: string, chatId: number) {
 
 export async function GET(req: Request, ctx: { params: { chatId: string } }) {
   try {
-    const me = await getAuthUser();
+    const me = await getSessionUser();
     if (!me?.id) {
       return NextResponse.json({ ok: false, message: 'Unauthorized' }, { status: 401 });
     }

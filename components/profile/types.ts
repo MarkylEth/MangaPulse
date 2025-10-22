@@ -1,4 +1,4 @@
-//components\profile\types.ts
+// components/profile/types.ts
 export type Status = 'reading' | 'completed' | 'planned' | 'dropped' | null;
 
 export type CardItem = {
@@ -33,10 +33,14 @@ export type LibraryRow = {
   } | null;
 };
 
+/**
+ * ✅ ИСПРАВЛЕНО: display_name вместо full_name
+ * Синхронизировано с БД и AuthUser типом
+ */
 export type ProfileLite = {
   id: string;
   username: string;
-  full_name: string | null;
+  display_name: string | null;  // ← было full_name
   avatar_url: string | null;
   bio: string | null;
   created_at: string | null;
@@ -48,9 +52,12 @@ export type ProfileLite = {
   discord_url: string | null;
 };
 
+/**
+ * ✅ ИСПРАВЛЕНО: display_name вместо full_name
+ */
 export type EditValues = {
   username: string;
-  full_name: string;
+  display_name: string;  // ← было full_name
   avatar_url: string;
   bio: string;
   banner_url: string;

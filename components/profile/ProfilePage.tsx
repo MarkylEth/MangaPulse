@@ -8,73 +8,110 @@ import { useParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { useTheme } from '@/lib/theme/context';
 import { useAuth } from '@/components/auth/AuthProvider';
-import { tryJson } from '@/lib/utils'; 
 
 import ProfileBanner from './ProfileBanner';
 import ProfileTabs from './ProfileTabs';
 import ProfileStats from './ProfileStats';
-import type { CardItem, ActivityItem, LibraryRow, ProfileLite, EditValues } from './types';
+import type { CardItem, LibraryRow, ProfileLite, EditValues } from './types';
 
-// ленивые модалки
 const EditProfileModal = dynamic(() => import('./EditProfileModal'), { ssr: false });
-const AddTitleModal   = dynamic(() => import('@/components/add-title/AddTitleModal'), { ssr: false });
+const AddTitleModal = dynamic(() => import('@/components/add-title/AddTitleModal'), { ssr: false });
 
-/* ================= helpers ================= */
+const LOADING_GIF_SRC = '/images/profile-loading.gif';
 
-const LOADING_GIF_SRC = '/images/profile-loading.gif'; // положи гифку в public/images/
+/* ==================== API HELPERS ==================== */
+/**
+ * ✅ ЕДИНСТВЕННАЯ функция для загрузки профиля
+ * Убрана двойная загрузка API
+ */
+async function fetchProfile(username: string): Promise<ProfileLite | null> {
+  try {
+    const response = await fetch(
+      `/api/profile/by-username?u=${encodeURIComponent(username)}`,
+      { cache: 'no-store' }
+    );
 
-function normalizeProfile(raw: any, fallbackUsername: string): ProfileLite | null {
-  // ✅ Теперь все API возвращают { ok, data: { profile } }
-  if (!raw?.ok || !raw?.data) return null;
-  
-  const profile = raw.data.profile;
-  if (!profile?.id) return null;
+    if (!response.ok) return null;
 
-  // ✅ Простая нормализация
-  return {
-    id: String(profile.id),
-    username: profile.username || fallbackUsername,
-    full_name: profile.full_name ?? null,
-    avatar_url: profile.avatar_url ?? null,
-    bio: profile.bio ?? null,
-    created_at: profile.created_at ?? null,
-    banner_url: profile.banner_url ?? null,
-    favorite_genres: Array.isArray(profile.favorite_genres) 
-      ? profile.favorite_genres 
-      : null,
-    telegram: profile.telegram ?? null,
-    x_url: profile.x_url ?? null,
-    vk_url: profile.vk_url ?? null,
-    discord_url: profile.discord_url ?? null,
-  };
+    const data = await response.json();
+    
+    // ✅ Проверяем новый формат { ok, data: { profile } }
+    if (!data?.ok || !data?.data?.profile) return null;
+
+    const p = data.data.profile;
+
+    return {
+      id: String(p.id),
+      username: p.username || username,
+      display_name: p.display_name ?? null,
+      avatar_url: p.avatar_url ?? null,
+      bio: p.bio ?? null,
+      created_at: p.created_at ?? null,
+      banner_url: p.banner_url ?? null,
+      favorite_genres: Array.isArray(p.favorite_genres) ? p.favorite_genres : null,
+      telegram: p.telegram ?? null,
+      x_url: p.x_url ?? null,
+      vk_url: p.vk_url ?? null,
+      discord_url: p.discord_url ?? null,
+    };
+  } catch (error) {
+    console.error('[fetchProfile] Error:', error);
+    return null;
+  }
 }
 
-/* ================= страница ================= */
+/**
+ * ✅ ЕДИНСТВЕННАЯ функция для загрузки библиотеки
+ */
+async function fetchLibrary(username: string): Promise<LibraryRow[]> {
+  try {
+    const response = await fetch(
+      `/api/user-library?username=${encodeURIComponent(username)}`,
+      { cache: 'no-store' }
+    );
 
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    
+    return Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
+  } catch (error) {
+    console.error('[fetchLibrary] Error:', error);
+    return [];
+  }
+}
+
+/* ==================== COMPONENT ==================== */
 export default function ProfilePage() {
   const { handle } = useParams<{ handle: string }>();
   const { theme } = useTheme();
-  const { user } = useAuth() as { user?: any; loading?: boolean };
+  const { user } = useAuth();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<ProfileLite | null>(null);
 
+  // Library states
   const [reading, setReading] = useState<CardItem[]>([]);
   const [completed, setCompleted] = useState<CardItem[]>([]);
   const [favorites, setFavorites] = useState<CardItem[]>([]);
   const [planned, setPlanned] = useState<CardItem[]>([]);
   const [dropped, setDropped] = useState<CardItem[]>([]);
-  const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
-
   const [libIndex, setLibIndex] = useState<Map<number, LibraryRow>>(new Map());
 
+  // Modal states
   const [addTitleModalOpen, setAddTitleModalOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
 
+  // ✅ Проверка владельца профиля
+  const isOwnProfile = useMemo(() => {
+    return !!user && !!profile && String(user.id) === String(profile.id);
+  }, [user, profile]);
+
+  // ✅ Начальные значения для редактирования
   const initialEditValues = useMemo<EditValues>(() => ({
     username: profile?.username ?? '',
-    full_name: profile?.full_name ?? '',
+    display_name: profile?.display_name ?? '',
     avatar_url: profile?.avatar_url ?? '',
     bio: profile?.bio ?? '',
     banner_url: profile?.banner_url ?? '',
@@ -85,137 +122,183 @@ export default function ProfilePage() {
     discord_url: profile?.discord_url ?? '',
   }), [profile]);
 
-  const getStatus = useCallback((id: number) => libIndex.get(id)?.status ?? 'reading', [libIndex]);
+  // ✅ Получение статуса манги
+  const getStatus = useCallback(
+    (id: number) => libIndex.get(id)?.status ?? 'reading',
+    [libIndex]
+  );
 
-  const isOwnProfile = useMemo(() => {
-    return !!user && !!profile && String(user.id) === String(profile.id);
-  }, [user, profile]);
-
+  /* ==================== LOAD DATA ==================== */
   useEffect(() => {
-    let alive = true;
+    let cancelled = false;
 
     (async () => {
       if (!handle) return;
+
       setLoading(true);
 
       try {
-        const profRaw = await tryJson([
-          `/api/profile/by-username?u=${encodeURIComponent(String(handle))}`,
-          `/api/profile/${encodeURIComponent(String(handle))}`,
+        // ✅ Параллельная загрузка профиля и библиотеки
+        const [profileData, libraryData] = await Promise.all([
+          fetchProfile(String(handle)),
+          fetchLibrary(String(handle)),
         ]);
 
-        const p = normalizeProfile(profRaw, String(handle));
+        if (cancelled) return;
 
-        if (!p?.id) {
+        if (!profileData) {
+          // Профиль не найден
           setProfile(null);
           setReading([]);
           setCompleted([]);
           setFavorites([]);
           setPlanned([]);
           setDropped([]);
-          setRecentActivity([]);
           setLibIndex(new Map());
           setLoading(false);
           return;
         }
 
-        setProfile(p);
+        setProfile(profileData);
 
-        const usernameParam = encodeURIComponent(String(p.username || handle));
-        const libRes = await tryJson([`/api/user-library?username=${usernameParam}`]);
+        // ✅ Обработка библиотеки
+        const index = new Map<number, LibraryRow>();
+        const readingList: CardItem[] = [];
+        const completedList: CardItem[] = [];
+        const plannedList: CardItem[] = [];
+        const droppedList: CardItem[] = [];
+        const favoritesList: CardItem[] = [];
 
-        const rows: LibraryRow[] = Array.isArray(libRes)
-          ? libRes
-          : Array.isArray((libRes as any)?.data)
-            ? (libRes as any).data
-            : [];
+        for (const row of libraryData) {
+          const mangaId = Number(row.manga_id);
+          index.set(mangaId, row);
 
-        const idx = new Map<number, LibraryRow>();
-        for (const r of rows) idx.set(Number(r.manga_id), r as LibraryRow);
-        setLibIndex(idx);
+          const item: CardItem = {
+            manga_id: mangaId,
+            title: row.manga?.title ?? null,
+            cover_url: row.manga?.cover_url ?? null,
+            lang: 'ru',
+          };
 
-        const toItem = (r: LibraryRow): CardItem => ({
-          manga_id: Number(r.manga_id),
-          title: r.manga?.title ?? null,
-          cover_url: r.manga?.cover_url ?? null,
-          lang: 'ru',
-        });
+          // Распределяем по спискам
+          switch (row.status) {
+            case 'reading':
+              readingList.push(item);
+              break;
+            case 'completed':
+              completedList.push(item);
+              break;
+            case 'planned':
+              plannedList.push(item);
+              break;
+            case 'dropped':
+              droppedList.push(item);
+              break;
+          }
 
-        setReading(rows.filter(r => r.status === 'reading').map(toItem));
-        setCompleted(rows.filter(r => r.status === 'completed').map(toItem));
-        setPlanned(rows.filter(r => r.status === 'planned').map(toItem));
-        setDropped(rows.filter(r => r.status === 'dropped').map(toItem));
-        setFavorites(
-          rows
-            .filter(r => (typeof r.is_favorite === 'boolean' ? r.is_favorite : !!r.favorite))
-            .map(toItem)
-        );
+          // Favorites
+          const isFavorite = 
+            typeof row.is_favorite === 'boolean' ? row.is_favorite : !!row.favorite;
+          if (isFavorite) {
+            favoritesList.push(item);
+          }
+        }
 
-        setRecentActivity(
-          rows.slice(0, 5).map(r => ({
-            type: r.status === 'completed' ? 'completed'
-                : r.status === 'planned'   ? 'planned'
-                : r.status === 'dropped'   ? 'dropped'
-                : 'read',
-            manga_id: Number(r.manga_id),
-            manga_title: r.manga?.title ?? 'Без названия',
-            manga_cover: r.manga?.cover_url ?? null,
-            date: r.updated_at || r.created_at || new Date().toISOString(),
-          }))
-        );
-      } catch (e) {
-        console.error('[ProfilePage] load failed', e);
-        setProfile(null);
-        setReading([]);
-        setCompleted([]);
-        setFavorites([]);
-        setPlanned([]);
-        setDropped([]);
-        setRecentActivity([]);
-        setLibIndex(new Map());
+        if (cancelled) return;
+
+        setLibIndex(index);
+        setReading(readingList);
+        setCompleted(completedList);
+        setPlanned(plannedList);
+        setDropped(droppedList);
+        setFavorites(favoritesList);
+
+      } catch (error) {
+        console.error('[ProfilePage] Load error:', error);
+        if (!cancelled) {
+          setProfile(null);
+          setReading([]);
+          setCompleted([]);
+          setFavorites([]);
+          setPlanned([]);
+          setDropped([]);
+          setLibIndex(new Map());
+        }
       } finally {
-        if (alive) setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
 
-    return () => { alive = false; };
+    return () => {
+      cancelled = true;
+    };
   }, [handle]);
 
+  /* ==================== LIBRARY MUTATIONS ==================== */
   const upsertLibrary = async (
     mangaId: number,
-    patch: Partial<{ status: 'reading'|'completed'|'planned'|'dropped'; favorite: boolean }>
+    patch: Partial<{ status: 'reading' | 'completed' | 'planned' | 'dropped'; favorite: boolean }>
   ) => {
     if (!isOwnProfile) {
       console.warn('[upsertLibrary] Cannot edit another user library');
       return;
     }
 
-    await fetch(`/api/manga/${mangaId}/library`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ status: patch.status, favorite: patch.favorite }),
-    }).catch(() => {});
+    try {
+      await fetch(`/api/manga/${mangaId}/library`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: patch.status, favorite: patch.favorite }),
+      });
+    } catch (error) {
+      console.error('[upsertLibrary] Error:', error);
+    }
   };
 
-  const setStatus = async (item: CardItem, status: 'reading'|'completed'|'planned'|'dropped') => {
+  const setStatus = async (
+    item: CardItem,
+    status: 'reading' | 'completed' | 'planned' | 'dropped'
+  ) => {
     if (!isOwnProfile) {
       alert('Вы не можете редактировать чужую библиотеку');
       return;
     }
 
-    setReading((p)   => status === 'reading'   ? [item, ...p.filter(x => x.manga_id !== item.manga_id)] : p.filter(x => x.manga_id !== item.manga_id));
-    setCompleted((p) => status === 'completed' ? [item, ...p.filter(x => x.manga_id !== item.manga_id)] : p.filter(x => x.manga_id !== item.manga_id));
-    setPlanned((p)   => status === 'planned'   ? [item, ...p.filter(x => x.manga_id !== item.manga_id)] : p.filter(x => x.manga_id !== item.manga_id));
-    setDropped((p)   => status === 'dropped'   ? [item, ...p.filter(x => x.manga_id !== item.manga_id)] : p.filter(x => x.manga_id !== item.manga_id));
+    // ✅ Оптимистичное обновление UI
+    setReading((prev) =>
+      status === 'reading'
+        ? [item, ...prev.filter((x) => x.manga_id !== item.manga_id)]
+        : prev.filter((x) => x.manga_id !== item.manga_id)
+    );
+    setCompleted((prev) =>
+      status === 'completed'
+        ? [item, ...prev.filter((x) => x.manga_id !== item.manga_id)]
+        : prev.filter((x) => x.manga_id !== item.manga_id)
+    );
+    setPlanned((prev) =>
+      status === 'planned'
+        ? [item, ...prev.filter((x) => x.manga_id !== item.manga_id)]
+        : prev.filter((x) => x.manga_id !== item.manga_id)
+    );
+    setDropped((prev) =>
+      status === 'dropped'
+        ? [item, ...prev.filter((x) => x.manga_id !== item.manga_id)]
+        : prev.filter((x) => x.manga_id !== item.manga_id)
+    );
 
-    setLibIndex((m) => {
-      const next = new Map(m);
-      const cur = next.get(item.manga_id) ?? { manga_id: item.manga_id, status: 'reading', is_favorite: false } as LibraryRow;
-      next.set(item.manga_id, { ...cur, status });
+    setLibIndex((map) => {
+      const next = new Map(map);
+      const current = next.get(item.manga_id) ?? {
+        manga_id: item.manga_id,
+        status: 'reading',
+        is_favorite: false,
+      } as LibraryRow;
+      next.set(item.manga_id, { ...current, status });
       return next;
     });
 
+    // API call
     await upsertLibrary(item.manga_id, { status });
   };
 
@@ -225,32 +308,54 @@ export default function ProfilePage() {
       return;
     }
 
-    setReading(p => p.filter(x => x.manga_id !== item.manga_id));
-    setCompleted(p => p.filter(x => x.manga_id !== item.manga_id));
-    setPlanned(p => p.filter(x => x.manga_id !== item.manga_id));
-    setDropped(p => p.filter(x => x.manga_id !== item.manga_id));
-    setFavorites(p => p.filter(x => x.manga_id !== item.manga_id));
-    setLibIndex(m => { const n = new Map(m); n.delete(item.manga_id); return n; });
+    // ✅ Оптимистичное удаление
+    setReading((prev) => prev.filter((x) => x.manga_id !== item.manga_id));
+    setCompleted((prev) => prev.filter((x) => x.manga_id !== item.manga_id));
+    setPlanned((prev) => prev.filter((x) => x.manga_id !== item.manga_id));
+    setDropped((prev) => prev.filter((x) => x.manga_id !== item.manga_id));
+    setFavorites((prev) => prev.filter((x) => x.manga_id !== item.manga_id));
+    setLibIndex((map) => {
+      const next = new Map(map);
+      next.delete(item.manga_id);
+      return next;
+    });
 
-    await fetch(`/api/manga/${item.manga_id}/library`, {
-      method: 'DELETE',
-      credentials: 'include',
-    }).catch(() => {});
+    // API call
+    try {
+      await fetch(`/api/manga/${item.manga_id}/library`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+    } catch (error) {
+      console.error('[removeFromLibrary] Error:', error);
+    }
   };
 
-  /* ============ рендер ============ */
+  /* ==================== PROFILE UPDATE ==================== */
+  const handleProfileSaved = async (values: EditValues) => {
+    // ✅ Перезагружаем профиль после сохранения
+    const updatedProfile = await fetchProfile(values.username);
+    if (updatedProfile) {
+      setProfile(updatedProfile);
+    }
+
+    // ✅ Редирект если изменился username
+    if (values.username && values.username !== profile?.username) {
+      router.replace(`/profile/${values.username}`);
+    }
+  };
+
+  /* ==================== RENDER ==================== */
   if (loading) {
     return (
       <div className="min-h-screen bg-background text-foreground relative">
-        {/* Ambient blobs */}
         <div className="fixed inset-0 pointer-events-none opacity-20">
           <div className="absolute top-0 left-1/4 w-96 h-96 bg-foreground/5 rounded-full blur-3xl" />
           <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-foreground/5 rounded-full blur-3xl" />
         </div>
-  
+
         <Header showSearch={false} />
-  
-        {/* Центр: БОЛЬШАЯ гифка + подпись */}
+
         <div className="relative max-w-[1400px] mx-auto px-6 py-12">
           <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
             <div className="rounded-2xl overflow-hidden ring-1 ring-border/40 shadow-lg">
@@ -258,7 +363,9 @@ export default function ProfilePage() {
                 src={LOADING_GIF_SRC}
                 alt="Загрузка…"
                 className="block w-36 h-36 md:w-52 md:h-52 object-cover select-none"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                }}
               />
             </div>
             <p className="text-muted-foreground">Загрузка профиля…</p>
@@ -266,7 +373,7 @@ export default function ProfilePage() {
         </div>
       </div>
     );
-  }  
+  }
 
   if (!profile) {
     return (
@@ -298,7 +405,6 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground relative">
-      {/* Ambient background effect */}
       <div className="fixed inset-0 pointer-events-none opacity-20">
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-foreground/5 rounded-full blur-3xl" />
         <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-foreground/5 rounded-full blur-3xl" />
@@ -307,9 +413,8 @@ export default function ProfilePage() {
       <Header showSearch={false} />
 
       <div className="relative mx-auto max-w-[1400px] px-6 py-8">
-        {/* Bento Grid Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left: Banner */}
+          {/* Main Content */}
           <div className="lg:col-span-8 space-y-6">
             <ProfileBanner
               profile={profile}
@@ -317,17 +422,17 @@ export default function ProfilePage() {
               onEdit={() => setEditOpen(true)}
             />
 
-            {/* Bio Section */}
             {profile.bio && (
               <section className="rounded-2xl p-6 bg-card/80 backdrop-blur-sm border border-border/50">
-                <h2 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wider">О себе</h2>
+                <h2 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wider">
+                  О себе
+                </h2>
                 <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
                   {profile.bio}
                 </p>
               </section>
             )}
 
-            {/* Library Tabs */}
             <section>
               <ProfileTabs
                 theme={theme === 'light' ? 'light' : 'dark'}
@@ -344,18 +449,18 @@ export default function ProfilePage() {
             </section>
           </div>
 
-          {/* Right: Stats Sidebar */}
+          {/* Sidebar */}
           <aside className="lg:col-span-4">
-          <ProfileStats
-            completed={completed.length}
-            reading={reading.length}
-            planned={planned.length}
-            dropped={dropped.length}
-            favorites={favorites.length}
-            createdAt={profile.created_at}
-            favoriteGenres={profile.favorite_genres}
-            profile={profile}
-          />
+            <ProfileStats
+              completed={completed.length}
+              reading={reading.length}
+              planned={planned.length}
+              dropped={dropped.length}
+              favorites={favorites.length}
+              createdAt={profile.created_at}
+              favoriteGenres={profile.favorite_genres}
+              profile={profile}
+            />
           </aside>
         </div>
       </div>
@@ -372,19 +477,7 @@ export default function ProfilePage() {
           open={editOpen}
           onClose={() => setEditOpen(false)}
           initial={initialEditValues}
-          onSaved={(v) => {
-            (async () => {
-              const profRaw = await tryJson([
-                `/api/profile/by-username?u=${encodeURIComponent(v.username)}`,
-              ]);
-              const p = normalizeProfile(profRaw, v.username);
-              if (p) setProfile(p);
-            })();
-
-            if (v.username && v.username !== profile?.username) {
-              router.replace(`/profile/${v.username}`);
-            }
-          }}
+          onSaved={handleProfileSaved}
           profileId={profile.id}
         />
       )}

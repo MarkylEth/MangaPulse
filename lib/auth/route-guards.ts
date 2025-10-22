@@ -1,7 +1,7 @@
 // lib/auth/route-guards.ts
 import type { NextRequest } from "next/server";
 import { query } from "@/lib/db";
-import { readSessionTokenFromCookies, verifySession } from "@/lib/auth/session";
+import { getSessionToken } from '@/lib/auth/session'
 
 /* ====================== Types ====================== */
 export type AuthUser = {
@@ -52,7 +52,7 @@ export async function getAuthUser(req?: Request | NextRequest): Promise<AuthUser
   // 1) mp_session
   let userId: string | null = null;
   try {
-    const token = await readSessionTokenFromCookies();
+    const token = await getSessionToken();
     const payload = verifySession(token);
     if (payload?.sub) userId = String(payload.sub);
   } catch {}

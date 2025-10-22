@@ -1,6 +1,6 @@
 // lib/auth.ts
 import { query } from "@/lib/db";
-import { readSessionTokenFromCookies, verifySession } from "@/lib/auth/session";
+import { getSessionToken } from '@/lib/auth/session'
 
 export type AuthUser = {
   id: string;
@@ -11,7 +11,7 @@ export type AuthUser = {
 };
 
 export async function getAuthUser(): Promise<AuthUser | null> {
-  const token = await readSessionTokenFromCookies();
+  const token = await getSessionToken();
   const payload = verifySession(token);
   if (!payload?.sub) return null;
 

@@ -3,7 +3,7 @@
 
 import { ThemeProvider } from '@/lib/theme/context';
 import { AuthProvider } from '@/components/auth/AuthProvider'; // именованный экспорт
-import type { AuthUser } from '@/lib/auth/getAuthUser';        // <- берём тип отсюда
+import type { AuthUser } from '@/lib/auth/session'     // <- берём тип отсюда
 
 export default function Providers({
   children,

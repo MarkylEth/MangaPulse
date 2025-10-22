@@ -172,7 +172,7 @@ export default function EditProfileModal({
       const payload = {
         id: profileId,
         username: v.username.trim(),
-        full_name: v.full_name.trim() || null,
+        display_name: v.display_name.trim() || null,  // ← было full_name
         avatar_url: v.avatar_url.trim() || null,
         bio: v.bio.trim() || null,
         banner_url: v.banner_url.trim() || null,
@@ -209,7 +209,7 @@ export default function EditProfileModal({
   
       onSaved({
         username: savedProfile.username ?? '',
-        full_name: savedProfile.full_name ?? '',
+        display_name: savedProfile.display_name ?? '',  // ← было full_name
         avatar_url: savedProfile.avatar_url ?? '',
         bio: savedProfile.bio ?? '',
         banner_url: savedProfile.banner_url ?? '',
@@ -322,7 +322,7 @@ export default function EditProfileModal({
                     {/* Name + Username */}
                     <div className="min-w-0 -mt-1 pt-0.5">
                       <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-foreground mb-0.5 tracking-tight truncate">
-                        {(v.full_name ?? '').trim() || (v.username || 'user')}
+                        {(v.display_name ?? '').trim() || (v.username || 'user')}  {/* ← было full_name */}
                       </h1>
                       <div className="text-xs sm:text-sm text-muted-foreground">
                         @{v.username || 'user'}
@@ -390,13 +390,13 @@ export default function EditProfileModal({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Полное имя</label>
+                  <label className="block text-sm font-medium mb-2">Отображаемое имя</label>
                   <input
                     type="text"
-                    value={v.full_name}
-                    onChange={(e) => setV({ ...v, full_name: e.target.value })}
+                    value={v.display_name}
+                    onChange={(e) => setV({ ...v, display_name: e.target.value })}
                     className="w-full bg-background border border-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent/50"
-                    placeholder="Ваше имя"
+                    placeholder="Как вас отображать?"
                   />
                 </div>
               </div>

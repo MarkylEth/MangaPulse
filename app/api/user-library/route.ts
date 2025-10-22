@@ -1,7 +1,7 @@
 // app/api/user-library/route.ts
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { getSessionFromCookies } from '@/lib/auth/session';
+import { getSessionUser } from '@/lib/auth/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,7 +21,7 @@ export async function GET(req: Request) {
 
     // ✅ Находим user_id по username (UUID остаётся на сервере)
     const userQuery = await query(
-      `SELECT id FROM public.profiles WHERE LOWER(username) = LOWER($1) LIMIT 1`,
+      `SELECT id::text FROM public.users WHERE LOWER(username) = LOWER($1) LIMIT 1`,
       [username]
     );
 
@@ -97,13 +97,11 @@ export async function GET(req: Request) {
 /* ========== PUT: Обновить библиотеку (только свою) ========== */
 export async function PUT(req: Request) {
   try {
-    const session = await getSessionFromCookies();
-    
-    if (!session?.sub) {
+    const user = await getSessionUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const userId: string = session.sub;
+    const userId: string = user.id;
 
     const body = await req.json().catch(() => ({}));
     const mangaId = Number(body?.manga_id);
@@ -141,13 +139,11 @@ export async function PUT(req: Request) {
 /* ========== DELETE: Удалить из библиотеки (только свою) ========== */
 export async function DELETE(req: Request) {
   try {
-    const session = await getSessionFromCookies();
-    
-    if (!session?.sub) {
+    const user = await getSessionUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const userId: string = session.sub;
+    const userId: string = user.id;
 
     const { searchParams } = new URL(req.url);
     const q = searchParams.get('manga_id');

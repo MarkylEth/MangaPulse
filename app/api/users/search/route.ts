@@ -1,7 +1,7 @@
 // app/api/users/search/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { getAuthUser } from '@/lib/auth';
+import { getSessionUser } from '@/lib/auth/session'
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -9,7 +9,7 @@ export const revalidate = 0;
 
 export async function GET(req: NextRequest) {
   try {
-    const me = (await getAuthUser().catch(() => null)) as any;
+    const me = (await getSessionUser().catch(() => null)) as any;
     const meId: string | null = me?.id ? String(me.id) : null;
 
     const { searchParams } = new URL(req.url);
