@@ -1,9 +1,7 @@
-// app/api/image-proxy/route.ts
+﻿// app/api/image-proxy/route.ts
 import { NextRequest } from "next/server";
 import dns from "node:dns/promises";
 import net from "node:net";
-
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** ====== настройки ====== */
@@ -212,3 +210,4 @@ export async function GET(req: NextRequest) {
     return new Response("proxy_error", { status: 502 });
   }
 }
+

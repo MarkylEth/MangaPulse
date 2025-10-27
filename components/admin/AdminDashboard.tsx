@@ -1,3 +1,4 @@
+//components/admin/AdminDashboard
 'use client';
 
 import React, { useState } from 'react';
@@ -21,7 +22,7 @@ import { AdminStats } from './AdminStats';
 import UserManagement from './UserManagement';
 import MangaManagement from './MangaManagement';
 import CommentModeration from './CommentModeration';
-import { SystemSettings } from './SystemSettings';
+import { AdminAuditLog } from './AdminAuditLog';
 import TitleSuggestionsPanel from './TitleSuggestions';
 import ChapterReviewPanel from '@/app/(admin)/admin/ChapterReviewPanel';
 
@@ -70,7 +71,7 @@ export default function AdminDashboard() {
     { key: 'reviews', title: 'Приёмка глав', desc: 'Одобрение/отклонение', icon: <FileCheck2 className="h-5 w-5" /> },
     { key: 'edits', title: 'Правки', desc: 'Заявки на правки', icon: <ClipboardList className="h-5 w-5" /> },
     { key: 'comments', title: 'Комментарии', desc: 'Модерация', icon: <MessageSquare className="h-5 w-5" /> },
-    { key: 'settings', title: 'Настройки', desc: 'Параметры системы', icon: <Settings className="h-5 w-5" /> },
+    { key: 'settings', title: 'Аудит', desc: 'Логи действий', icon: <Activity className="h-5 w-5" /> },
   ];
 
   function renderContent() {
@@ -88,7 +89,7 @@ export default function AdminDashboard() {
       case 'comments':
         return <CommentModeration />;
       case 'settings':
-        return <SystemSettings />;
+        return <AdminAuditLog />;
       default:
         return null;
     }

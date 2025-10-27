@@ -1,8 +1,6 @@
-import { neon } from '@neondatabase/serverless';
+﻿import { neon } from '@neondatabase/serverless';
 
 export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
-
 const sql = neon(process.env.DATABASE_URL!);
 
 function slugify(s: string) {
@@ -119,3 +117,4 @@ export async function GET(_req: Request, { params }: { params: { publisher: stri
     return Response.json({ ok: false, error: 'server_error' }, { status: 500 });
   }
 }
+

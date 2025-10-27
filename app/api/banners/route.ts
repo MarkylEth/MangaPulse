@@ -1,9 +1,7 @@
-// app/api/banners/route.ts
+﻿// app/api/banners/route.ts
 import { NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import path from 'path'
-
-export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 const BANNERS_DIR = path.join(process.cwd(), 'public', 'banners')
@@ -49,3 +47,4 @@ export async function GET() {
     return NextResponse.json([], { status: 200 }) // не роняем главную
   }
 }
+

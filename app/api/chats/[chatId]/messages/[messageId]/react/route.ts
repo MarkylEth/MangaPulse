@@ -1,10 +1,8 @@
-// app/api/chats/[chatId]/messages/[messageId]/react/route.ts
+﻿// app/api/chats/[chatId]/messages/[messageId]/react/route.ts
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/session'
 import { query } from '@/lib/db';
 import { pushReaction } from '@/lib/realtime/sse-broker';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 async function ensureMember(userId: string, chatId: number) {
@@ -75,3 +73,4 @@ export async function POST(req: Request, ctx: { params: { chatId: string; messag
     return NextResponse.json({ ok: false, message: 'failed' }, { status: 500 });
   }
 }
+

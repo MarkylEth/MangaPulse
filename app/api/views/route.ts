@@ -1,9 +1,7 @@
-// app/api/views/route.ts
+﻿// app/api/views/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { getIp } from '@/lib/net/ip';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -76,3 +74,4 @@ export async function POST(req: NextRequest) {
     return ok({ error: 'internal' }, 500);
   }
 }
+

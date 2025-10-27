@@ -1,11 +1,9 @@
+﻿//app/api/people/[person]/route.ts
 import { neon } from '@neondatabase/serverless';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const sql = neon(process.env.DATABASE_URL!);
 
-// Универсальный поиск id по id/handle/slug/имени (в т.ч. slugified)
 async function resolvePersonId(keyRaw: string): Promise<number | null> {
   const key = decodeURIComponent(keyRaw || '').trim();
   if (!key) return null;
@@ -21,7 +19,6 @@ async function resolvePersonId(keyRaw: string): Promise<number | null> {
     sql`select id from people where lower(handle)      = lower(${key}) limit 1`,
     sql`select id from people where lower(slug)        = lower(${key}) limit 1`,
     sql`select id from people where lower(username)    = lower(${key}) limit 1`,
-    sql`select id from people where lower(nickname)    = lower(${key}) limit 1`,
     sql`select id from people where lower(full_name)   = lower(${key}) limit 1`,
     sql`select id from people where lower(display_name)= lower(${key}) limit 1`,
     sql`select id from people where lower(name)        = lower(${key}) limit 1`,
@@ -51,7 +48,6 @@ export async function GET(_req: Request, { params }: { params: { person: string 
     const id = await resolvePersonId(key);
     if (!id) return Response.json({ ok: false, error: 'not_found' }, { status: 404 });
 
-    // ⚠️ Безопасный SELECT: все поля через to_jsonb(p)->>'...'
     const rows: any[] = await sql`
       select
         p.id                                            as id,
@@ -60,7 +56,6 @@ export async function GET(_req: Request, { params }: { params: { person: string 
         coalesce(
           to_jsonb(p)->>'full_name',
           to_jsonb(p)->>'display_name',
-          to_jsonb(p)->>'nickname',
           to_jsonb(p)->>'username',
           to_jsonb(p)->>'name',
           to_jsonb(p)->>'handle',

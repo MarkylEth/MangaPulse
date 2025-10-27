@@ -1,8 +1,6 @@
-// app/api/reader/[mangaId]/volume/[vol]/chapters/route.ts
+﻿// app/api/reader/[mangaId]/volume/[vol]/chapters/route.ts
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
-
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 async function columnExists(table: string, column: string) {
@@ -69,3 +67,4 @@ export async function GET(
     return NextResponse.json({ ok: false, items: [], error: e?.message ?? "error" }, { status: 500 });
   }
 }
+

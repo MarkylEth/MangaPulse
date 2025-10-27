@@ -1,8 +1,6 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { getSessionUser } from '@/lib/auth';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -117,3 +115,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, message: 'Failed to create chat' }, { status: 500 });
   }
 }
+

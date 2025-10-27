@@ -1,8 +1,6 @@
-// app/api/teams/search/route.ts
+﻿// app/api/teams/search/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
-
-export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 type Row = { id: number; name: string; slug: string | null }
@@ -52,3 +50,4 @@ export async function GET(req: NextRequest) {
     )
   }
 }
+

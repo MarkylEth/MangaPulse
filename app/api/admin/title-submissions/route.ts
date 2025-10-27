@@ -1,7 +1,6 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+﻿//app/api/admin/title-submissions/route.ts
+import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /* ---------------- helpers ---------------- */
@@ -249,8 +248,9 @@ export async function GET() {
       `select
          ts.id, ts.type, ts.status, ts.payload, ts.tags, ts.genres, ts.release_formats, ts.source_links,
          ts.manga_id, ts.reviewed_at, ts.review_note, ts.created_at, ts.author_comment, ts.user_id,
-         coalesce(ts.author_name, p.full_name, p.display_name, p.nickname, p.username) as author_name
+         coalesce(ts.author_name, p.display_name, u.username) as author_name
        from title_submissions ts
+       left join users u on u.id = ts.user_id
        left join profiles p on p.user_id = ts.user_id
        order by ts.created_at desc
        limit 50`
@@ -495,3 +495,4 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ ok: false, error: e?.message ?? 'Internal error' }, { status: 500 });
   }
 }
+

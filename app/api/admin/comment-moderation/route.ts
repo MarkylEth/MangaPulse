@@ -1,40 +1,59 @@
 // app/api/admin/comment-moderation/route.ts
-import { NextResponse } from 'next/server'
-// import { many, query } from '@/lib/db' // подключим, когда определим схему
+import { NextResponse, type NextRequest } from 'next/server';
+import { requireModeratorAPI } from '@/lib/admin/api-guard';
+import { logAdminAction } from '@/lib/admin/audit-log';
 
-/** GET: список комментов на модерации */
-export async function GET() {
+export const dynamic = 'force-dynamic';
+
+export async function GET(req: NextRequest) {
   try {
-    // TODO: заменить на SELECT из таблиц comments + флаги модерации
-    const items: Array<{
-      id: string
-      manga_id?: number | null
-      page_id?: number | null
-      created_at?: string
-      user_id?: string | null
-      comment: string
-      flags?: string[]
-    }> = []
+    await requireModeratorAPI(req);
 
-    return NextResponse.json({ ok: true, items })
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? 'Internal error' }, { status: 500 })
+    const items: Array<{
+      id: string;
+      manga_id?: number | null;
+      page_id?: number | null;
+      created_at?: string;
+      user_id?: string | null;
+      comment: string;
+      flags?: string[];
+    }> = [];
+
+    return NextResponse.json({ ok: true, items });
+  } catch (err) {
+    if (err instanceof Response) return err;
+    console.error('[GET /api/admin/comment-moderation]:', err);
+    return NextResponse.json({ ok: false, error: 'internal' }, { status: 500 });
   }
 }
 
-/** POST: действие модератора (approve/reject/delete) */
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const { id, action, reason } = await req.json().catch(() => ({}))
+    const { userId: modId } = await requireModeratorAPI(req);
+
+    const body = await req.json().catch(() => null);
+    if (!body) {
+      return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400 });
+    }
+
+    const { id, action, reason } = body;
     if (!id || !action) {
-      return NextResponse.json({ ok: false, error: 'id and action are required' }, { status: 400 })
+      return NextResponse.json({ ok: false, error: 'id and action required' }, { status: 400 });
     }
 
     // TODO: выполнить UPDATE/DELETE в зависимости от action
-    // await query('UPDATE comments SET ... WHERE id=$1', [id])
 
-    return NextResponse.json({ ok: true, id, action, reason: reason ?? null })
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? 'Internal error' }, { status: 500 })
+    // ✅ Аудит - ПРАВИЛЬНАЯ СТРОКА
+    await logAdminAction(modId, 'comment_moderation', id, {
+      ip: req.headers.get('x-forwarded-for')?.split(',')[0],
+      action,
+      reason: reason || null,
+    });
+
+    return NextResponse.json({ ok: true, id, action, reason: reason ?? null });
+  } catch (err) {
+    if (err instanceof Response) return err;
+    console.error('[POST /api/admin/comment-moderation]:', err);
+    return NextResponse.json({ ok: false, error: 'internal' }, { status: 500 });
   }
 }

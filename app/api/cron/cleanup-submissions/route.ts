@@ -4,8 +4,6 @@
 }
 // app/api/cron/cleanup-submissions/route.ts
 import { NextResponse } from 'next/server';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 // Vercel Cron или внешний cron может вызывать этот эндпоинт
@@ -138,3 +136,4 @@ export async function GET(req: Request) {
     }, { status: 500 });
   }
 }
+

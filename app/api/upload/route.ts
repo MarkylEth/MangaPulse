@@ -1,8 +1,5 @@
-// app/api/upload/route.ts
+﻿// app/api/upload/route.ts
 // Загрузка обложек в Wasabi с конвертацией в .webp (вся статика в одной папке)
-
-export const runtime = 'nodejs';
-
 import { NextResponse } from 'next/server';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import sharp from 'sharp';
@@ -137,3 +134,4 @@ export async function POST(req: Request) {
     );
   }
 }
+

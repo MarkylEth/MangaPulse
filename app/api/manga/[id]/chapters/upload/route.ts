@@ -1,4 +1,4 @@
-// app/api/manga/[id]/chapters/upload/route.ts
+﻿// app/api/manga/[id]/chapters/upload/route.ts
 import { NextResponse } from 'next/server';
 import { requireUploader } from '@/lib/auth/route-guards';
 import { cookies } from 'next/headers';
@@ -17,8 +17,6 @@ function cors(req: Request) {
   return h;
 }
 export async function OPTIONS(req: Request) { return new NextResponse(null, { headers: cors(req) }); }
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {

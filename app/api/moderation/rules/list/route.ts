@@ -1,3 +1,4 @@
+//app/api/moderation/rules/list/route.ts
 const rules = rows.map((r: any) => {
   // было: const raw = String(r.pattern ?? "");
   const raw = String(r.pattern ?? "");

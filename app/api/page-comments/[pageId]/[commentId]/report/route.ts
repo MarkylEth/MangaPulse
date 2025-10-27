@@ -1,5 +1,4 @@
-import { NextResponse } from "next/server";
-export const runtime = "nodejs";
+﻿import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 const THRESHOLD = 10;
@@ -58,3 +57,4 @@ export async function POST(req: Request, ctx: { params: { id: string; commentId:
     return NextResponse.json({ ok: false, message: String(e?.message || e) }, { status: 500 });
   }
 }
+

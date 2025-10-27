@@ -1,9 +1,7 @@
-// app/api/auth/google/callback/route.ts
+﻿// app/api/auth/google/callback/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { signSession, setSessionCookie } from '@/lib/auth/session';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function redirectWithError(origin: string, code: string, detail?: string) {

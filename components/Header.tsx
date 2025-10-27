@@ -10,7 +10,6 @@ import { usePathname, useRouter } from 'next/navigation';
 
 import { useTheme } from '@/lib/theme/context';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import AuthModal from '@/components/auth/AuthModal';
 import AddTitleModal from '@/components/add-title/AddTitleModal';
 import CreateTeamDialog from '@/components/teams/CreateTeamDialog';
 import AddRelatedButton from '@/components/AddRelatedButton';
@@ -40,8 +39,6 @@ const ThemedLogo = ({ className = '' }: { className?: string }) => {
   );
 };
 
-
-
 export function Header({
   searchQuery = '',
   onSearchChange,
@@ -56,7 +53,6 @@ export function Header({
   const { user, isGuest, setUser } = useAuth();
 
   const profileName = useMemo(() => {
-    // Приоритет: username (для URL) или display_name (для отображения)
     if (user?.username) return String(user.username);
     if (user?.display_name) return String(user.display_name);
     if (user?.email) return String(user.email).split('@')[0];
@@ -64,7 +60,6 @@ export function Header({
   }, [user]);
   
   const displayName = useMemo(() => {
-    // Для UI показываем display_name или username
     if (user?.display_name) return String(user.display_name);
     if (user?.username) return String(user.username);
     if (user?.email) return String(user.email).split('@')[0];
@@ -73,7 +68,6 @@ export function Header({
 
   const profileRole = (user as any)?.role ?? null;
 
-  const [authModalOpen, setAuthModalOpen] = useState(false);
   const [addTitleModalOpen, setAddTitleModalOpen] = useState(false);
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
 
@@ -164,38 +158,18 @@ export function Header({
             {showSearch ? (
               <div className="flex-1 max-w-2xl mx-auto">
                 <div className="relative group">
-                  {/* Улучшенная кнопка каталога */}
                   <Link href="/catalog" className="absolute left-2 top-1/2 -translate-y-1/2 z-10">
                     <motion.button 
                       whileHover={{ scale: 1.02, y: -1 }} 
                       whileTap={{ scale: 0.98 }}
                       className="relative flex items-center gap-2 px-4 py-2 bg-gradient-to-br from-indigo-600 via-blue-600 to-cyan-600 hover:from-indigo-500 hover:via-blue-500 hover:to-cyan-500 text-white text-sm font-medium rounded-lg transition-all shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 overflow-hidden group/btn"
                     >
-                      {/* Анимированный фон */}
-                      <motion.div
-                        className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
-                        animate={{ x: ['-200%', '200%'] }}
-                        transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                      />
-                      
-                      {/* Иконка с анимацией */}
-                      <motion.div
-                        whileHover={{ rotate: 180 }}
-                        transition={{ duration: 0.3 }}
-                        className="relative z-10"
-                      >
-                        <LayoutGrid className="w-4 h-4" />
-                      </motion.div>
-                      
-                      <span className="hidden sm:inline relative z-10">Каталог</span>
-                      
-                      {/* Декоративные элементы */}
-                      <div className="absolute top-0 right-0 w-8 h-8 bg-cyan-400/20 rounded-full blur-xl group-hover/btn:bg-cyan-400/30 transition-all" />
-                      <div className="absolute bottom-0 left-0 w-6 h-6 bg-indigo-400/20 rounded-full blur-lg group-hover/btn:bg-indigo-400/30 transition-all" />
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-200%] group-hover/btn:translate-x-[200%] transition-transform duration-700" />
+                      <LayoutGrid className="w-4 h-4 relative z-10" />
+                      <span className="hidden sm:block relative z-10 font-semibold">Каталог</span>
                     </motion.button>
                   </Link>
-
-                  {/* Поле поиска */}
+                  
                   <input
                     type="text"
                     placeholder="Поиск манги..."
@@ -204,7 +178,6 @@ export function Header({
                     className="w-full rounded-xl pl-[110px] sm:pl-32 pr-12 py-3 border border-zinc-800/50 bg-zinc-900/40 backdrop-blur-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all hover:bg-zinc-900/60"
                   />
                   
-                  {/* Иконка поиска с эффектом */}
                   <motion.div
                     className="absolute right-4 top-1/2 -translate-y-1/2"
                     animate={{ scale: searchLocal ? [1, 1.1, 1] : 1 }}
@@ -346,12 +319,13 @@ export function Header({
                             </button>
                           </>
                         ) : (
-                          <button
-                            onClick={() => { setAuthModalOpen(true); setShowUserMenu(false); }}
-                            className="w-full text-left px-3 py-2.5 text-sm text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/60 rounded-lg transition-all"
+                          <Link
+                            href="/login"
+                            onClick={() => setShowUserMenu(false)}
+                            className="block w-full text-left px-3 py-2.5 text-sm text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/60 rounded-lg transition-all"
                           >
                             Войти / Регистрация
-                          </button>
+                          </Link>
                         )}
                       </div>
                     </motion.div>
@@ -363,7 +337,6 @@ export function Header({
         </div>
       </header>
 
-      <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
       <AddTitleModal open={addTitleModalOpen} onOpenChange={setAddTitleModalOpen} />
       {teamDialogOpen && <CreateTeamDialog onClose={() => setTeamDialogOpen(false)} />}
     </>

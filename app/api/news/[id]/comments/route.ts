@@ -25,10 +25,11 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const rows = await sql<CommentRow>`
       select
         c.id, c.body, c.created_at, c.author_id,
-        coalesce(p.full_name, p.display_name, p.nickname, p.username) as author_name,
+        coalesce(p.display_name, u.username) as author_name,
         p.avatar_url as author_avatar
       from news_comments c
-      left join profiles p on p.id = c.author_id
+      left join users u on u.id = c.author_id
+      left join profiles p on p.user_id = c.author_id
       where c.news_id = ${newsId} 
         and c.deleted_at is null
       order by c.created_at asc, c.id asc

@@ -28,10 +28,11 @@ export async function GET(
     const rows = await sql<Row>`
       select
         n.id, n.title, n.body, n.pinned, n.visible, n.created_at, n.author_id,
-        coalesce(p.full_name, p.display_name, p.nickname, p.username) as author_name,
+        coalesce(p.display_name, u.username) as author_name,
         p.avatar_url as author_avatar
       from news n
-      left join profiles p on p.id = n.author_id
+      left join users u on u.id = n.author_id
+      left join profiles p on p.user_id = n.author_id
       where n.id = ${id} and n.visible = true
       limit 1
     `;

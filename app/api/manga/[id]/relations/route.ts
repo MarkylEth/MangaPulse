@@ -1,8 +1,6 @@
-import { NextResponse, type NextRequest } from 'next/server'
+﻿import { NextResponse, type NextRequest } from 'next/server'
 import { query } from '@/lib/db'
 import { getAuthUser } from '@/lib/auth/route-guards'
-
-export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
@@ -193,3 +191,4 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     return NextResponse.json({ ok: false, error: e?.message ?? 'Internal error' }, { status: 500 })
   }
 }
+

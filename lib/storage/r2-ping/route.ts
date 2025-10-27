@@ -1,7 +1,5 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { r2PutBuffer } from '@/lib/storage/r2';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
@@ -13,3 +11,4 @@ export async function GET() {
   );
   return NextResponse.json({ ok: true, key, url });
 }
+

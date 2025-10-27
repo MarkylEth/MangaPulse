@@ -1,9 +1,7 @@
-// app/api/admin/manga-moderation/cleanup/route.ts
+﻿// app/api/admin/manga-moderation/cleanup/route.ts
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/route-guards';
 import { query, withTransaction } from '@/lib/db';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const AUTO_CLEANUP_DAYS = 15;

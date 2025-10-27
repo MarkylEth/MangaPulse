@@ -1,7 +1,5 @@
-// app/api/moderation/rules/route.ts
+﻿// app/api/moderation/rules/route.ts
 import { NextResponse } from "next/server";
-
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type Row = {
@@ -63,3 +61,4 @@ export async function GET() {
     );
   }
 }
+

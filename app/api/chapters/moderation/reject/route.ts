@@ -1,11 +1,9 @@
-// app/api/chapters/moderation/reject/route.ts
+﻿// app/api/chapters/moderation/reject/route.ts
 import { NextResponse } from 'next/server';
 import { withTransaction } from '@/lib/db';
 import { requireRole } from '@/lib/auth/route-guards';
 import { deletePrefix, deleteKeys, toKey } from '@/lib/r2';
 import { romajiSlug } from '@/lib/slug';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function allowByApiKey(req: Request) {

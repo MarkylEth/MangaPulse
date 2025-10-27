@@ -4,7 +4,6 @@ import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import { SESSION_COOKIE, SESSION_JWT_SECRET } from '@/lib/auth/config';
 
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const JWT_SECRET = new TextEncoder().encode(SESSION_JWT_SECRET);

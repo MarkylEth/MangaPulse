@@ -1,4 +1,4 @@
-// app/api/auth/password/request/route.ts
+﻿// app/api/auth/password/request/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { assertOriginJSON } from '@/lib/csrf';
 import { query } from '@/lib/db';
@@ -8,8 +8,6 @@ import { getPasswordResetEmailHtml, getPasswordResetEmailText } from '@/lib/emai
 
 // ✅ анти-брутфорс
 import { makeKey, registerFail } from '@/lib/anti-bruteforce';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 // ✅ простой генератор токена без JWT
@@ -100,3 +98,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+

@@ -1,6 +1,4 @@
-// app/api/upload/delete/route.ts
-export const runtime = 'nodejs';
-
+﻿// app/api/upload/delete/route.ts
 import { NextRequest } from 'next/server';
 import { wasabi } from '@/lib/wasabi';
 
@@ -37,3 +35,4 @@ function extractKeyFromUrl(u?: string | null): string | null {
     return null;
   }
 }
+

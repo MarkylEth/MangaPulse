@@ -1,3 +1,4 @@
+//components/admin/UserManagement.tsx
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -31,7 +32,6 @@ type Profile = {
   vk_url?: string | null;
   x_url?: string | null;
   display_name?: string | null;
-  nickname?: string | null;
 };
 
 type UserDetails = {
@@ -63,7 +63,6 @@ export default function UserManagement() {
     email: '',
     note: '',
     display_name: '',
-    nickname: '',
     bio: '',
     about_md: '',
     avatar_url: '',
@@ -179,7 +178,6 @@ export default function UserManagement() {
       email: u.email ?? '',
       note: u.note ?? '',
       display_name: u.display_name ?? '',
-      nickname: u.nickname ?? '',
       bio: u.bio ?? '',
       about_md: u.about_md ?? '',
       avatar_url: u.avatar_url ?? '',
@@ -229,7 +227,6 @@ export default function UserManagement() {
           email: p.email ?? '',
           note: p.note ?? '',
           display_name: p.display_name ?? '',
-          nickname: p.nickname ?? '',
           bio: p.bio ?? '',
           about_md: p.about_md ?? '',
           avatar_url: p.avatar_url ?? '',
@@ -251,7 +248,7 @@ export default function UserManagement() {
     }
   }
 
-  async function saveAll() {
+async function saveAll() {
     if (!details) return;
     setSaving(true);
     try {
@@ -289,15 +286,11 @@ export default function UserManagement() {
         if (!r3.ok || !j3?.ok) throw new Error(j3?.error || `HTTP ${r3.status}`);
       }
 
-      // локально
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === details.profile.id ? { ...u, ...draftProfile, role: draftRole, banned: draftBanned } : u
-        )
-      );
-      setDetails((d) =>
-        d ? { ...d, profile: { ...d.profile, ...draftProfile, role: draftRole, banned: draftBanned } } : d
-      );
+      // ✅ ПЕРЕЗАГРУЖАЕМ список пользователей с сервера
+      await fetchUsers();
+
+      // ✅ Обновляем детали текущего пользователя
+      await loadDetails(id);
 
       alert('✅ Сохранено успешно!');
     } catch (e) {
@@ -620,14 +613,6 @@ export default function UserManagement() {
                             className={input}
                             value={draftProfile.display_name ?? ''}
                             onChange={(e) => setDraftProfile((p) => ({ ...p, display_name: e.target.value }))}
-                          />
-                        </div>
-                        <div>
-                          <label className={`mb-1 block text-xs uppercase ${muted}`}>Nickname</label>
-                          <input
-                            className={input}
-                            value={draftProfile.nickname ?? ''}
-                            onChange={(e) => setDraftProfile((p) => ({ ...p, nickname: e.target.value }))}
                           />
                         </div>
                         <div className="md:col-span-2">

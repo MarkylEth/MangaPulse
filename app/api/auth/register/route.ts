@@ -1,40 +1,30 @@
-// app/api/auth/register/route.ts
+﻿// app/api/auth/register/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { assertOriginJSON } from '@/lib/csrf';
 import { query } from '@/lib/db';
 import { sendVerificationEmail } from '@/lib/mail';
 import { randomBytes, createHash } from 'crypto';
 import { hashPassword } from '@/lib/auth/password';
-
-// ✅ анти-брутфорс
 import { makeKey, registerFail, resetCounter } from '@/lib/anti-bruteforce';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 type ReqBody = {
   email?: string;
-  name?: string;
+  username?: string;
   password?: string;
 };
 
-// ✅ ДОБАВИТЬ: функция задержки
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Небольшой helper для IP; замени на свой импорт, если он у тебя уже есть
 function getClientIp(req: NextRequest): string {
   const xf = req.headers.get('x-forwarded-for');
   if (xf) {
     const ip = xf.split(',')[0]?.trim();
     if (ip) return ip;
   }
-  const xr = req.headers.get('x-real-ip');
-  if (xr) return xr;
-  const cf = req.headers.get('cf-connecting-ip');
-  if (cf) return cf;
-  return (req as any).ip || '0.0.0.0';
+  return req.headers.get('x-real-ip') || req.headers.get('cf-connecting-ip') || (req as any).ip || '0.0.0.0';
 }
 
 function getBaseUrl(req: Request) {
@@ -46,31 +36,24 @@ function getBaseUrl(req: Request) {
   return process.env.NEXT_PUBLIC_SITE_URL || `http://localhost:${process.env.PORT ?? 3000}`;
 }
 
-/**
- * ✅ Генерирует уникальный username на основе email или name
- */
 async function generateUsername(base: string): Promise<string> {
   const sanitized = base
     .toLowerCase()
     .replace(/[^a-z0-9_]/g, '')
     .slice(0, 16) || 'user';
 
-  // Сразу проверяем базовый вариант
   let candidate = sanitized;
   
-  for (let i = 1; i <= 999; i++) { // увеличить до 999
+  for (let i = 1; i <= 999; i++) {
     const { rows } = await query<{ exists: boolean }>(
       `SELECT EXISTS(SELECT 1 FROM users WHERE LOWER(username) = LOWER($1))`,
       [candidate]
     );
     
     if (!rows[0]?.exists) return candidate;
-    
-    // Используем более компактный формат: user123 вместо user_1234567890
     candidate = `${sanitized}${i}`;
   }
   
-  // Fallback: случайный суффикс вместо timestamp
   const randomSuffix = Math.random().toString(36).substring(2, 8);
   return `${sanitized}_${randomSuffix}`;
 }
@@ -84,10 +67,8 @@ async function storeEmailToken(email: string, tokenHash: string, ttlHours = 24) 
 }
 
 export async function POST(req: NextRequest) {
-  // CSRF-защита
   assertOriginJSON(req);
 
-  // ✅ rate limiting / anti-bruteforce
   const ip = getClientIp(req);
   const key = makeKey(ip, 'register');
 
@@ -95,12 +76,7 @@ export async function POST(req: NextRequest) {
   if (delay > 5000) {
     return NextResponse.json(
       { ok: false, error: 'too_many_attempts' },
-      {
-        status: 429,
-        headers: {
-          'Retry-After': '60',
-        },
-      }
+      { status: 429, headers: { 'Retry-After': '60' } }
     );
   }
 
@@ -120,7 +96,7 @@ export async function POST(req: NextRequest) {
     }
 
     const email = String(body?.email || '').trim().toLowerCase();
-    const displayName = (body?.name || '').trim() || null;
+    const userUsername = (body?.username || '').trim();
     const pwd = (body?.password || '').trim();
 
     // Валидация
@@ -130,55 +106,50 @@ export async function POST(req: NextRequest) {
     if (!pwd || pwd.length < 6) {
       return NextResponse.json({ ok: false, error: 'weak_password' }, { status: 400 });
     }
+    if (!userUsername || userUsername.length < 2) {
+      return NextResponse.json({ ok: false, error: 'username_too_short' }, { status: 400 });
+    }
 
-    // Проверка, существует ли пользователь
+    // Проверка существования пользователя
     const existingUser = await query(
       `SELECT id, email_verified_at FROM users WHERE email = $1 LIMIT 1`,
       [email]
     );
 
-    // ✅ ИСПРАВЛЕНИЕ: убрать дублирование условия
     if (existingUser.rows.length > 0) {
-      // Не раскрываем, существует ли email
-      await sleep(1000); // Искусственная задержка для совпадения таймингов
-      return NextResponse.json(
-        { ok: true }, // Всегда возвращаем успех
-        { status: 200 }
-      );
+      await sleep(1000); // Timing attack protection
+      return NextResponse.json({ ok: true }, { status: 200 });
     }
 
-    // ✅ Генерируем username из email или name
-    const username = await generateUsername(
-      displayName || email.split('@')[0] || 'user'
-    );
+    // Генерируем username
+    const username = await generateUsername(userUsername || email.split('@')[0] || 'user');
 
-    // Генерация токена подтверждения
+    // Генерация токена
     const token = randomBytes(32).toString('hex');
     const tokenHash = createHash('sha256').update(token).digest('hex');
 
-    // Хешируем пароль
+    // Хеш пароля
     const pwdHash = await hashPassword(pwd);
 
     await query('BEGIN');
 
     try {
-      // ✅ Создаём пользователя с username
+      // Создаём пользователя
       await query(
-        `INSERT INTO users (email, username, password_hash)
-         VALUES ($1, $2, $3)
+        `INSERT INTO users (email, username, password_hash, token_version)
+         VALUES ($1, $2, $3, 0)
          ON CONFLICT (email) DO UPDATE SET
            username = EXCLUDED.username,
            password_hash = EXCLUDED.password_hash`,
         [email, username, pwdHash]
       );
 
-      // ✅ Профиль создастся автоматически через trigger
-      // Но если нужно установить display_name:
+      // Профиль создастся через trigger, обновляем display_name
       await query(
         `UPDATE profiles 
          SET display_name = $2
          WHERE user_id = (SELECT id FROM users WHERE email = $1)`,
-        [email, displayName]
+        [email, userUsername]
       );
 
       // Сохраняем токен
@@ -188,11 +159,10 @@ export async function POST(req: NextRequest) {
     } catch (error: any) {
       await query('ROLLBACK');
 
-      // Обработка конфликта username
       if (error?.code === '23505' && error?.constraint?.includes('username')) {
         return NextResponse.json(
-          { ok: false, error: 'username_generation_failed' },
-          { status: 500 }
+          { ok: false, error: 'username_taken' },
+          { status: 409 }
         );
       }
 
@@ -211,14 +181,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ✅ при успехе — сбрасываем счётчик брутфорса
     resetCounter(key);
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     console.error('[POST /api/auth/register] fatal:', e);
     
-    // ✅ ИСПРАВЛЕНИЕ: не отправлять e?.message в production
     const isProduction = process.env.NODE_ENV === 'production';
     
     return NextResponse.json(

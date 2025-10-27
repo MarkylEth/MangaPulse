@@ -1,9 +1,7 @@
-// app/api/auth/google/route.ts
+﻿// app/api/auth/google/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { query } from '@/lib/db';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function b64url(buf: Buffer) { return buf.toString('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
@@ -60,3 +58,4 @@ export async function GET(req: NextRequest) {
     `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
   );
 }
+

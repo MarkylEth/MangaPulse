@@ -1,9 +1,7 @@
-// app/api/auth/verify/route.ts
+﻿// app/api/auth/verify/route.ts
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { createHash } from 'crypto';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function toUrl(path: string) {
@@ -18,60 +16,63 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const token = searchParams.get('token');
+    
     if (!token) {
-      return NextResponse.json({ ok: false, error: 'missing_token' }, { status: 400 });
+      return NextResponse.redirect(toUrl('/login?error=missing_token'));
     }
 
     const tokenHash = createHash('sha256').update(token).digest('hex');
 
-    // Ищем токен ТОЛЬКО в новой таблице
+    // Ищем токен
     const r = await query<{
       id: number;
       email: string;
       expires_at: string;
       used_at: string | null;
     }>(
-      `select id, email, expires_at, used_at
-         from public.auth_email_tokens
-        where token_hash = $1
-        limit 1`,
-      [tokenHash],
+      `SELECT id, email, expires_at, used_at
+       FROM public.auth_email_tokens
+       WHERE token_hash = $1
+       LIMIT 1`,
+      [tokenHash]
     );
 
     const row = r.rows?.[0];
+    
     if (!row) {
-      return NextResponse.json({ ok: false, error: 'invalid_token' }, { status: 400 });
+      return NextResponse.redirect(toUrl('/login?error=invalid_token'));
     }
 
-    // Уже использован — просто редиректим с флагом
+    // Уже использован
     if (row.used_at) {
-      return NextResponse.redirect(toUrl('/?verified=1'));
+      return NextResponse.redirect(toUrl('/login?verified=1&already_used=1'));
     }
 
+    // Просрочен
     if (new Date(row.expires_at) < new Date()) {
-      return NextResponse.json({ ok: false, error: 'token_expired' }, { status: 400 });
+      return NextResponse.redirect(toUrl('/login?error=token_expired'));
     }
 
     // Помечаем использованным
     await query(
-      `update public.auth_email_tokens
-          set used_at = now()
-        where token_hash = $1`,
-      [tokenHash],
+      `UPDATE public.auth_email_tokens
+       SET used_at = now()
+       WHERE token_hash = $1`,
+      [tokenHash]
     );
 
-    // Проставляем email_verified_at у пользователя
+    // Проставляем email_verified_at
     await query(
-      `update public.users
-          set email_verified_at = now()
-        where email = $1`,
-      [row.email],
+      `UPDATE public.users
+       SET email_verified_at = now()
+       WHERE email = $1`,
+      [row.email]
     );
 
-    // ✅ Редирект на главную
-    return NextResponse.redirect(toUrl('/?verified=1'));
+    // ✅ Редирект на /login с успехом
+    return NextResponse.redirect(toUrl('/login?verified=1'));
   } catch (e: any) {
     console.error('[GET /api/auth/verify] fatal:', e);
-    return NextResponse.json({ ok: false, error: 'internal', message: e?.message }, { status: 500 });
+    return NextResponse.redirect(toUrl('/login?error=internal'));
   }
 }

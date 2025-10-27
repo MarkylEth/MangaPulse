@@ -1,9 +1,7 @@
-// app/api/health/route.ts
+﻿// app/api/health/route.ts
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { verifySmtp } from '@/lib/mail';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
@@ -24,3 +22,4 @@ export async function GET() {
     );
   }
 }
+

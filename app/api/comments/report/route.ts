@@ -1,6 +1,4 @@
-import { NextResponse } from "next/server";
-
-export const runtime = "nodejs";
+﻿import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 type Row = Record<string, any>;
@@ -91,3 +89,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok:false, message:e?.message || "server error" }, { status:500 });
   }
 }
+

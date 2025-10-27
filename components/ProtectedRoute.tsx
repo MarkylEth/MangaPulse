@@ -1,4 +1,4 @@
-//components\ProtectedRoute.tsx
+//components/ProtectedRoute.tsx
 'use client'
 
 import { ReactNode } from 'react'

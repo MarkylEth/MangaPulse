@@ -1,10 +1,8 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { query, withTransaction, getClient } from '@/lib/db';
 import { requireRole } from '@/lib/auth/route-guards';
 import { listPrefix, moveObject, deletePrefix, toKey } from '@/lib/r2';
 import { romajiSlug } from '@/lib/slug';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const pad = (n: number, w = 3) => String(n).padStart(w, '0');
@@ -207,3 +205,4 @@ export async function POST(req: Request, ctx?: { params: { id: string } }) {
 
   return NextResponse.json({ ok:true, chapterId, finalPrefix, moved, skipped });
 }
+

@@ -1,9 +1,7 @@
-// app/api/users/search/route.ts
+﻿// app/api/users/search/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { getSessionUser } from '@/lib/auth/session'
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -57,3 +55,4 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+

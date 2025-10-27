@@ -1,7 +1,5 @@
-// app/api/moderation/comments/route.ts
+﻿// app/api/moderation/comments/route.ts
 import { NextResponse } from "next/server";
-
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /* ========= DB helper (Neon) ========= */
@@ -75,7 +73,10 @@ export async function GET(req: Request) {
           coalesce(to_jsonb(c)->>'comment', to_jsonb(c)->>'content', '') as content,
           c.created_at      as created_at,
           c.user_id::text   as author_id,
-          (select p.username from public.profiles p where p.id = c.user_id limit 1) as author_name,
+          (select coalesce(p.display_name, u.username) 
+           from public.users u 
+           left join public.profiles p on p.user_id = u.id 
+           where u.id = c.user_id limit 1) as author_name,
           coalesce((
             select count(*)::int
             from public.comment_reports cr
@@ -93,7 +94,10 @@ export async function GET(req: Request) {
           coalesce(to_jsonb(c)->>'content', to_jsonb(c)->>'comment', '') as content,
           c.created_at      as created_at,
           c.user_id::text   as author_id,
-          (select p.username from public.profiles p where p.id = c.user_id limit 1) as author_name,
+          (select coalesce(p.display_name, u.username) 
+           from public.users u 
+           left join public.profiles p on p.user_id = u.id 
+           where u.id = c.user_id limit 1) as author_name,
           coalesce((
             select count(*)::int
             from public.comment_reports cr
@@ -125,7 +129,10 @@ export async function GET(req: Request) {
           coalesce(to_jsonb(c)->>'content', to_jsonb(c)->>'comment', '') as content,
           c.created_at      as created_at,
           c.user_id::text   as author_id,
-          (select p.username from public.profiles p where p.id = c.user_id limit 1) as author_name,
+          (select coalesce(p.display_name, u.username) 
+           from public.users u 
+           left join public.profiles p on p.user_id = u.id 
+           where u.id = c.user_id limit 1) as author_name,
           coalesce((
             select count(*)::int
             from public.comment_reports cr

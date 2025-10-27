@@ -1,12 +1,10 @@
-// app/api/library/bulk/route.ts
+﻿// app/api/library/bulk/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 // Вариант А (унифицировано с другими роутами):
 // import { getAuthUser } from '@/lib/auth/route-guards';
 // Вариант Б (как у тебя сейчас, если внутри читаются cookies()):
 import { getSessionUser } from '@/lib/auth/session'
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 type ReadStatus = 'planned' | 'reading' | 'completed' | 'dropped';
@@ -115,3 +113,4 @@ export async function POST(req: NextRequest) {
     return err('bulk_failed', 500, { detail: String(e?.message || e) });
   }
 }
+

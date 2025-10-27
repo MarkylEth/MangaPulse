@@ -1,51 +1,60 @@
-import { NextResponse } from 'next/server';
+﻿// app/api/admin/stats/route.ts
+import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { requireRole } from '@/lib/auth/route-guards';
+import { requireModeratorAPI } from '@/lib/admin/api-guard';
+export const dynamic = 'force-dynamic';
 
 async function safeCount(sql: string, params: any[] = []) {
   try {
-    const { rows } = await query<{ c: string | number }>(`select coalesce((${sql}),0) as c`, params);
+    const { rows } = await query<{ c: string | number }>(
+      `SELECT COALESCE((${sql}), 0) as c`,
+      params
+    );
     return Number(rows?.[0]?.c ?? 0);
-  } catch {
+  } catch (e) {
+    console.error('safeCount failed:', e);
     return 0;
   }
 }
 
-export async function GET(req: Request) {
-  const auth = await requireRole(req, ['admin', 'moderator']);
-  if (!auth.ok) {
-    return NextResponse.json({ ok: false, message: auth.reason || 'forbidden' }, { status: auth.status });
-  }
+export async function GET(req: NextRequest) {
+  try {
+    // ✅ Модератор или админ
+    await requireModeratorAPI(req);
 
-  // считаем, где это возможно
-  const [
-    users,
-    manga,
-    chapters,
-    pending,   // ждут модерации
-    drafts,
-    today,
-    comments,
-  ] = await Promise.all([
-    safeCount(`select count(*) from profiles`),
-    safeCount(`select count(*) from manga`),
-    safeCount(`select count(*) from chapters`),
-    safeCount(`select count(*) from chapters where lower(status) in ('ready')`),
-    safeCount(`select count(*) from chapters where lower(status) in ('draft')`),
-    safeCount(`select count(*) from chapters where date(created_at) = current_date`),
-    safeCount(`select count(*) from manga_comments`),
-  ]);
-
-  return NextResponse.json({
-    ok: true,
-    stats: {
+    const [
       users,
       manga,
       chapters,
-      pendingChapters: pending,
-      draftChapters: drafts,
-      todayUploads: today,
+      pending,
+      drafts,
+      today,
       comments,
-    },
-  });
+    ] = await Promise.all([
+      safeCount(`SELECT COUNT(*) FROM users`),
+      safeCount(`SELECT COUNT(*) FROM manga`),
+      safeCount(`SELECT COUNT(*) FROM chapters`),
+      safeCount(`SELECT COUNT(*) FROM chapters WHERE LOWER(status) = 'ready'`),
+      safeCount(`SELECT COUNT(*) FROM chapters WHERE LOWER(status) = 'draft'`),
+      safeCount(`SELECT COUNT(*) FROM chapters WHERE DATE(created_at) = CURRENT_DATE`),
+      safeCount(`SELECT COUNT(*) FROM manga_comments`),
+    ]);
+
+    return NextResponse.json({
+      ok: true,
+      stats: {
+        users,
+        manga,
+        chapters,
+        pendingChapters: pending,
+        draftChapters: drafts,
+        todayUploads: today,
+        comments,
+      },
+    });
+  } catch (err) {
+    if (err instanceof Response) return err;
+    console.error('[GET /api/admin/stats]:', err);
+    return NextResponse.json({ ok: false, error: 'internal' }, { status: 500 });
+  }
 }

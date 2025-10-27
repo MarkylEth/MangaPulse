@@ -1,10 +1,8 @@
-// app/api/manga/[id]/comments/[commentId]/route.ts
+﻿// app/api/manga/[id]/comments/[commentId]/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
 import { query } from '@/lib/db';
 import { getAuthUser } from '@/lib/auth/route-guards';
 import { getLeaderTeamIdForTitle } from '@/lib/team/leader';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -137,3 +135,4 @@ export async function DELETE(req: NextRequest, ctx: { params: { id: string; comm
     return jserr(e);
   }
 }
+

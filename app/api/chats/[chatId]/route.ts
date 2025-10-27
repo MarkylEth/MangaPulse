@@ -1,8 +1,6 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { getSessionUser } from '@/lib/auth';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 async function ensureMember(userId: string, chatId: number) {
@@ -82,3 +80,4 @@ export async function GET(req: Request, ctx: { params: { chatId: string } }) {
     return NextResponse.json({ ok: false, message: 'server_error' }, { status: 500 });
   }
 }
+

@@ -1,9 +1,7 @@
-// app/api/reader/bookmarks/by-manga/[manga_id]/route.ts
+﻿// app/api/reader/bookmarks/by-manga/[manga_id]/route.ts
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { requireUser } from '@/lib/auth/route-guards';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 

@@ -1,4 +1,4 @@
-// app/api/manga/approve/route.ts
+﻿// app/api/manga/approve/route.ts
 import { NextRequest } from 'next/server';
 import { withTransaction } from '@/lib/db';
 import type { PoolClient } from 'pg';
@@ -36,8 +36,6 @@ async function m2mReplace(
   const values = list.map((_, i) => `($1, $${i + 2})`).join(',');
   await client.query(`INSERT INTO ${table} (manga_id, ${col}) VALUES ${values}`, [mangaId, ...list]);
 }
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
@@ -153,3 +151,4 @@ export async function POST(req: NextRequest) {
     return Response.json({ ok: false, error: e?.message || 'approve_failed' }, { status: 500 });
   }
 }
+

@@ -1,8 +1,6 @@
-// app/api/chapters/[id]/teams/route.ts
+﻿// app/api/chapters/[id]/teams/route.ts
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -59,3 +57,4 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
     );
   }
 }
+

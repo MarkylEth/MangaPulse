@@ -1,4 +1,5 @@
-// app/api/auth/send/route.ts
+﻿// app/api/auth/send/route.ts
+// мёртвый Файл пока что, нужно создать магические ссылки (выступает за Письмо не пришло? Отправить заново)
 import { NextRequest, NextResponse } from 'next/server';
 import { assertOriginJSON } from '@/lib/csrf';
 import { resend, FROM, APP_URL } from '@/lib/resend';
@@ -16,7 +17,6 @@ function makeToken(email: string) {
 }
 
 export async function POST(req: NextRequest) {
-  // CSRF-защита
   assertOriginJSON(req);
 
   try {

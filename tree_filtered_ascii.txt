@@ -1,5 +1,6 @@
 ﻿MangaPulse1
 +-- .eslintrc.json
++-- middleware.ts
 +-- New-AsciiTree.ps1
 +-- next-env.d.ts
 +-- package.json
@@ -43,6 +44,8 @@
 |   |   |   |   +-- route.ts
 |   |   |   |   \-- [id]
 |   |   |   |       +-- route.ts
+|   |   |   +-- debug
+|   |   |   |   +-- route.ts
 |   |   |   +-- env
 |   |   |   |   +-- route.ts
 |   |   |   +-- manga
@@ -460,7 +463,6 @@
 |   |   +-- TitleSuggestions.tsx
 |   |   +-- UserManagement.tsx
 |   +-- auth
-|   |   +-- AuthModal.tsx
 |   |   +-- AuthProvider.tsx
 |   +-- catalog
 |   |   +-- CatalogCard.tsx
@@ -576,7 +578,6 @@
 |   +-- normalize.ts
 |   +-- public-url.ts
 |   +-- r2.ts
-|   +-- rate-limit.ts
 |   +-- resend.ts
 |   +-- safeImageSrc.ts
 |   +-- slug.ts
@@ -587,7 +588,10 @@
 |   +-- wasabi.ts
 |   +-- wasabi-client.ts
 |   +-- admin
+|   |   +-- api-guard.ts
+|   |   +-- audit-log.ts
 |   |   +-- guard.ts
+|   |   +-- rate-limit.ts
 |   +-- auth
 |   |   +-- config.ts
 |   |   +-- email.ts
@@ -633,6 +637,7 @@
 |   \-- theme
 |       +-- context.tsx
 \-- public
+    +-- assets
     +-- banners
     +-- images
     \-- loader

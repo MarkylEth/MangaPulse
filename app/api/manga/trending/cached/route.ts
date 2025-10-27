@@ -1,12 +1,10 @@
-// ============================================
+﻿// ============================================
 // app/api/manga/trending/cached/route.ts
 // БЫСТРАЯ версия с использованием MATERIALIZED VIEW
 // ============================================
 
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 

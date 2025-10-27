@@ -1,8 +1,6 @@
-import { neon } from '@neondatabase/serverless';
+﻿import { neon } from '@neondatabase/serverless';
 
 export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
-
 const sql = neon(process.env.DATABASE_URL!);
 
 function normQ(q: string) {
@@ -52,3 +50,4 @@ export async function GET(req: Request) {
     return Response.json({ items: [] });
   }
 }
+

@@ -1,37 +1,37 @@
-import { NextResponse } from 'next/server';
+// app/api/admin/chapters/pending/route.ts
+import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { requireRole } from '@/lib/auth/route-guards';
+import { requireModeratorAPI } from '@/lib/admin/api-guard';
 
-/**
- * GET /api/admin/chapters/pending
- * Возвращает главы, ожидающие проверки (ready | draft), не одобренные.
- * Требует роль admin|moderator.
- */
-export async function GET(req: Request) {
-  const auth = await requireRole(req, ['admin', 'moderator']);
-  if (!auth.ok) return NextResponse.json({ ok: false, message: 'unauthorized' }, { status: 401 });
+export const dynamic = 'force-dynamic';
 
-  const { rows } = await query(
-    `
-    select
-      c.id,
-      c.manga_id,
-      coalesce(c.chapter_number,0)       as chapter_number,
-      coalesce(c.volume,0)               as volume,
-      coalesce(c.title,'')               as title,
-      lower(c.status)                    as status,
-      coalesce(c.pages_count,0)          as pages_count,
-      c.created_at,
-      m.title                            as manga_title,
-      m.slug                             as manga_slug
-    from chapters c
-    join manga m on m.id = c.manga_id
-    where lower(c.status) in ('ready','draft')
-      and c.approved_by is null
-    order by c.created_at desc
-    limit 200
-    `
-  );
+export async function GET(req: NextRequest) {
+  try {
+    await requireModeratorAPI(req);
 
-  return NextResponse.json({ ok: true, items: rows });
+    const { rows } = await query(
+      `SELECT
+        c.id,
+        c.manga_id,
+        COALESCE(c.chapter_number, 0) as chapter_number,
+        COALESCE(c.volume, 0) as volume,
+        COALESCE(c.title, '') as title,
+        LOWER(c.status) as status,
+        COALESCE(c.pages_count, 0) as pages_count,
+        c.created_at,
+        m.title as manga_title,
+        m.slug as manga_slug
+       FROM chapters c
+       JOIN manga m ON m.id = c.manga_id
+       WHERE LOWER(c.status) IN ('ready', 'draft')
+         AND c.approved_by IS NULL
+       ORDER BY c.created_at DESC
+       LIMIT 200`
+    );
+
+    return NextResponse.json({ ok: true, items: rows });
+  } catch (err) {
+    if (err instanceof Response) return err;
+    return NextResponse.json({ ok: false, error: 'internal' }, { status: 500 });
+  }
 }

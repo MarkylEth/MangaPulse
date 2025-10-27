@@ -1,10 +1,8 @@
-// app/api/chapters/cleanup/[id]/route.ts
+﻿// app/api/chapters/cleanup/[id]/route.ts
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/route-guards';
 import { deletePrefix, listObjects } from '@/lib/r2';
 import { romajiSlug } from '@/lib/slug';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function DELETE(req: Request, ctx: { params: { id: string } }) {

@@ -1,6 +1,5 @@
+﻿//app/api/people/route.ts
 import { neon } from '@neondatabase/serverless';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -13,16 +12,14 @@ export async function POST(req: Request) {
     const rawName = String(body?.name || '').trim();
     if (!rawName) return Response.json({ ok: false, error: 'name_required' }, { status: 400 });
 
-    const roleIn = String(body?.role || '').toUpperCase();      // 'AUTHOR' | 'ARTIST' | ''
+    const roleIn = String(body?.role || '').toUpperCase();
     const hasRole = roleIn === 'AUTHOR' || roleIn === 'ARTIST';
     const slug = slugify(rawName);
 
-    // ищем существующего
     const found: any[] = await sql`
       select id,
              coalesce(to_jsonb(p)->>'full_name',
                       to_jsonb(p)->>'display_name',
-                      to_jsonb(p)->>'nickname',
                       to_jsonb(p)->>'username',
                       to_jsonb(p)->>'name',
                       to_jsonb(p)->>'handle',
@@ -39,7 +36,6 @@ export async function POST(req: Request) {
     if (found?.length) {
       const r = found[0];
 
-      // если передана роль — аккуратно допишем её
       if (hasRole) {
         try {
           await sql`
@@ -51,7 +47,7 @@ export async function POST(req: Request) {
                      else roles end
              where id = ${Number(r.id)}
           `;
-        } catch { /* роли необязательны, не падаем */ }
+        } catch { /* роли необязательны */ }
       }
 
       return Response.json({ ok: true, item: { id: Number(r.id), name: r.name || rawName, slug: r.slug ?? slug } });

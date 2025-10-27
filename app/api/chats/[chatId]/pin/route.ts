@@ -1,9 +1,7 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { getSessionUser } from '@/lib/auth/session'
 import { pushPin } from '@/lib/realtime/sse-broker';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 async function ensureMember(userId: string, chatId: number) {
@@ -55,3 +53,4 @@ export async function POST(req: Request, ctx: { params: { chatId: string } }) {
     return NextResponse.json({ ok: false, message: 'internal' }, { status: 500 });
   }
 }
+

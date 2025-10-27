@@ -1,8 +1,6 @@
-// app/api/chapters/debug/route.ts
+﻿// app/api/chapters/debug/route.ts
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
@@ -15,3 +13,4 @@ export async function GET() {
   `);
   return NextResponse.json(rows); // без оболочки, для простоты
 }
+

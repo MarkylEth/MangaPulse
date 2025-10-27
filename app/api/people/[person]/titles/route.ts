@@ -1,11 +1,9 @@
+﻿//app/api/people/[person]/titles/route.ts
 import { neon } from '@neondatabase/serverless';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const sql = neon(process.env.DATABASE_URL!);
 
-// тот же резолвер, что и в /people/[person]
 async function resolvePersonId(keyRaw: string): Promise<number | null> {
   const key = decodeURIComponent(keyRaw || '').trim();
   if (!key) return null;
@@ -21,7 +19,6 @@ async function resolvePersonId(keyRaw: string): Promise<number | null> {
     sql`select id from people where lower(handle)       = lower(${key}) limit 1`,
     sql`select id from people where lower(slug)         = lower(${key}) limit 1`,
     sql`select id from people where lower(username)     = lower(${key}) limit 1`,
-    sql`select id from people where lower(nickname)     = lower(${key}) limit 1`,
     sql`select id from people where lower(full_name)    = lower(${key}) limit 1`,
     sql`select id from people where lower(display_name) = lower(${key}) limit 1`,
     sql`select id from people where lower(name)         = lower(${key}) limit 1`,
@@ -39,7 +36,6 @@ async function resolvePersonId(keyRaw: string): Promise<number | null> {
   return null;
 }
 
-// один и тот же безопасный SELECT, но с разными названиями связующей таблицы
 async function selectTitles(personId: number) {
   const queries = [
     sql`
@@ -167,8 +163,8 @@ async function selectTitles(personId: number) {
   for (const q of queries) {
     try {
       const rows: any[] = await q as any;
-      if (rows) return rows;           // даже пустой массив — это валидный ответ
-    } catch { /* пробуем следующий вариант */ }
+      if (rows) return rows;
+    } catch { /* пробуем следующий */ }
   }
   return [];
 }

@@ -1,7 +1,5 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 type Row = {
@@ -65,3 +63,4 @@ export async function GET(_req: Request, { params }: { params: { mangaId: string
     return NextResponse.json({ ok: true, volumes: [], error: e?.message });
   }
 }
+

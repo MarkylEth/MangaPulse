@@ -1,8 +1,6 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { getAuthUser, requireRole } from '@/lib/auth/route-guards';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /** Отвязать команду от манги (админ/модер или лидер этой команды) */
@@ -39,3 +37,4 @@ export async function DELETE(req: Request, { params }: { params: { id: string; t
 
   return NextResponse.json({ ok: true });
 }
+

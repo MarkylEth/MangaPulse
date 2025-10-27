@@ -1,7 +1,5 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /* ---------------- helpers ---------------- */
@@ -308,3 +306,4 @@ export async function GET(req: Request, { params }: { params: { chapterId: strin
     return NextResponse.json({ ok: false, error: e?.message ?? 'error' }, { status: 500 });
   }
 }
+

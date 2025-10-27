@@ -1,9 +1,7 @@
-// app/api/reader/bookmarks/route.ts
+﻿// app/api/reader/bookmarks/route.ts
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { requireUser } from '@/lib/auth/route-guards';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -155,3 +153,4 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ ok: false, error: e?.message ?? 'Server error' }, { status: 500 });
   }
 }
+

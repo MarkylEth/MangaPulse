@@ -1,9 +1,7 @@
-// app/api/user-library/route.ts
+﻿// app/api/user-library/route.ts
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { getSessionUser } from '@/lib/auth/session';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 

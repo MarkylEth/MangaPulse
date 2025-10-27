@@ -1,8 +1,6 @@
-// app/api/manga/search/route.ts
+﻿// app/api/manga/search/route.ts
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
@@ -36,3 +34,4 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, message: e?.message ?? 'Internal error' }, { status: 500 });
   }
 }
+

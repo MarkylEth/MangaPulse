@@ -1,8 +1,6 @@
-// app/api/manga/trending/route.ts
+﻿// app/api/manga/trending/route.ts
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 

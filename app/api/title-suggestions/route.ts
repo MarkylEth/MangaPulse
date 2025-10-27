@@ -1,8 +1,6 @@
-// app/api/title-suggestions/route.ts
+﻿// app/api/title-suggestions/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /* ================= helpers ================= */
@@ -216,3 +214,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: e?.message ?? 'Internal error' }, { status: 500 });
   }
 }
+

@@ -1,9 +1,7 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { getSessionUser } from '@/lib/auth/session'
 import { pushRead } from '@/lib/realtime/sse-broker';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 async function ensureMember(userId: string, chatId: number) {

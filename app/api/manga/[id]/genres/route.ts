@@ -1,8 +1,6 @@
-// app/api/manga/[id]/genres/route.ts
+﻿// app/api/manga/[id]/genres/route.ts
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
@@ -39,3 +37,4 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
     return NextResponse.json({ ok: false, message: e?.message ?? 'Internal error' }, { status: 500 });
   }
 }
+

@@ -1,8 +1,6 @@
-// app/api/manga/[id]/chapters/route.ts
+﻿// app/api/manga/[id]/chapters/route.ts
 import { NextResponse } from 'next/server';
 import { getPublicChaptersByManga } from '@/lib/data/chapters';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
@@ -18,3 +16,4 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     return NextResponse.json({ ok: false, message: e?.message ?? 'Internal error' }, { status: 500 });
   }
 }
+

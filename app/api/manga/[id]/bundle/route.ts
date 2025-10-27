@@ -1,10 +1,8 @@
-// app/api/manga/[id]/bundle/route.ts
+﻿// app/api/manga/[id]/bundle/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
 import { query } from '@/lib/db';
 import { getAuthUser } from '@/lib/auth/route-guards';
 import { getLeaderTeamIdForTitle } from '@/lib/team/leader';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 

@@ -1,6 +1,4 @@
-import { query } from '@/lib/db';
-
-export const runtime = 'nodejs';
+﻿import { query } from '@/lib/db';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 

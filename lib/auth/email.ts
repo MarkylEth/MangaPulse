@@ -1,4 +1,4 @@
-// lib/auth/email.ts
+﻿// lib/auth/email.ts
 import { randomBytes, createHash } from 'crypto';
 import { query } from '@/lib/db';
 import { sendVerificationEmail } from '@/lib/mail';
@@ -6,7 +6,6 @@ import { sendVerificationEmail } from '@/lib/mail';
 function b64url(bytes: Buffer) {
   return bytes.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
-
 /**
  * Создаёт одноразовый токен подтверждения email и отправляет письмо.
  * Таблица: public.auth_email_tokens (email, token_hash, expires_at, used_at, created_at)
@@ -47,3 +46,4 @@ export async function consumeEmailVerificationToken(rawToken: string): Promise<s
 
   return res.rowCount ? res.rows[0].email : null;
 }
+

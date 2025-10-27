@@ -1,11 +1,9 @@
-// app/api/teams/route.ts
+﻿// app/api/teams/route.ts
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { verifySession } from '@/lib/auth/session';
 import { SESSION_COOKIE } from '@/lib/auth/config';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -76,3 +74,4 @@ export async function POST(req: Request) {
     );
   }
 }
+

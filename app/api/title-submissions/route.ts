@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { query } from '@/lib/db';
 
 /* ------------- helpers ------------- */
@@ -36,8 +36,6 @@ function releaseFormatLabelsFrom(p: any): string[] {
   }
   return Array.from(out);
 }
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
@@ -115,3 +113,4 @@ export async function POST(req: NextRequest) {
     return Response.json({ ok: false, error: e?.message || 'submit_failed' }, { status: 500 });
   }
 }
+

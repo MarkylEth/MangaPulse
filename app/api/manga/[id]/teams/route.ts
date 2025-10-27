@@ -1,8 +1,6 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { requireRole, getAuthUser } from '@/lib/auth/route-guards';
-
-export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /** Список команд, привязанных к манге */
@@ -58,3 +56,4 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 }
 
 // ⚠️ DELETE тут не нужен — используем маршрут /teams/[teamId]
+

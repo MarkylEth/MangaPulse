@@ -1,8 +1,6 @@
-// app/api/reader/[mangaId]/volume/[vol]/chapter/[chapter]/pages/route.ts
+﻿// app/api/reader/[mangaId]/volume/[vol]/chapter/[chapter]/pages/route.ts
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
-
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Проверка присутствия колонки в схеме
