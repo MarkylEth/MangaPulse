@@ -306,7 +306,7 @@ function HomeNewsPanel({
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-indigo-400" />
-          <h3 className="text-lg font-medium">Новости от команды</h3>
+          <h3 className="text-lg font-medium">Новости проекта</h3>
         </div>
         {canPostNews && (
           <button
@@ -320,15 +320,18 @@ function HomeNewsPanel({
         )}
       </div>
 
-      <div className="min-h-[260px] max-h-[260px] overflow-y-auto space-y-3 pr-1">
+      <div className="space-y-3">
         {teamNews.loading ? (
-          Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-12 rounded-lg border border-accent/20 bg-accent/10 animate-pulse" />
+          Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-12 rounded-lg border border-accent/20 bg-accent/10 animate-pulse"
+            />
           ))
         ) : teamNews.items.length === 0 ? (
           <div className="text-sm text-muted-foreground">Пока нет новостей.</div>
         ) : (
-          teamNews.items.map((it) => <TeamNewsRow key={it.id} it={it} />)
+          teamNews.items.slice(0, 4).map((it) => <TeamNewsRow key={it.id} it={it} />)
         )}
       </div>
 

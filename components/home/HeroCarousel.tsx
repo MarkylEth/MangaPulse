@@ -1,3 +1,4 @@
+//components/home/HeroCarousel.tsx
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -238,27 +239,6 @@ export default function HeroCarousel({
         >
           <ChevronRight className="w-5 h-5 text-white" />
         </motion.button>
-      </div>
-
-      {/* индикаторы: точки + прогресс текущей */}
-      <div className="absolute bottom-6 right-6 flex gap-2">
-        {items.map((_, index) => {
-          const isActive = index === currentIndex;
-          return (
-            <button
-              key={index}
-              onClick={() => goTo(index)}
-              className="relative h-2 w-5 rounded-full bg-white/30 overflow-hidden"
-              aria-label={`Слайд ${index + 1}`}
-              aria-current={isActive}
-            >
-              <span
-                className={`absolute inset-y-0 left-0 ${isActive ? 'bg-white' : 'bg-white/60'} transition-[width]`}
-                style={{ width: isActive ? `${Math.max(0, Math.min(100, progress * 100))}%` : '0%' }}
-              />
-            </button>
-          );
-        })}
       </div>
     </div>
   );
