@@ -206,7 +206,9 @@
 |   |   |   |   |   +-- route.ts
 |   |   |   |   |   \-- [commentId]
 |   |   |   |   |       +-- route.ts
-|   |   |   |   |       \-- report
+|   |   |   |   |       +-- report
+|   |   |   |   |       |   +-- route.ts
+|   |   |   |   |       \-- vote
 |   |   |   |   |           +-- route.ts
 |   |   |   |   +-- genres
 |   |   |   |   |   +-- route.ts
@@ -443,12 +445,8 @@
 |   +-- AddChapterButton.tsx
 |   +-- AddRelatedButton.tsx
 |   +-- AuthLoader.tsx
-|   +-- ChapterLikeButton.tsx
-|   +-- ChapterReader.tsx
 |   +-- ChatWindow.tsx
-|   +-- ForceReaderDark.tsx
 |   +-- Header.tsx
-|   +-- PageComments.tsx
 |   +-- ProtectedRoute.tsx
 |   +-- RelatedTitlesRow.tsx
 |   +-- ThemeToggle.tsx
@@ -530,6 +528,17 @@
 |   |   |   +-- PublisherPage.tsx
 |   |   \-- simple
 |   |       +-- SimpleTitlesPage.tsx
+|   +-- reader
+|   |   +-- ChapterMetadata.tsx
+|   |   +-- ChapterReader.tsx
+|   |   +-- ForceReaderDark.tsx
+|   |   +-- PageNavigation.tsx
+|   |   +-- PageViewer.tsx
+|   |   \-- ChapterComments
+|   |       +-- CommentEditor.tsx
+|   |       +-- CommentItem.tsx
+|   |       +-- CommentsList.tsx
+|   |       +-- index.tsx
 |   +-- team
 |   |   +-- TeamClientPage.tsx
 |   |   +-- TeamMembers.tsx
@@ -568,6 +577,7 @@
 |   +-- anti-bruteforce.ts
 |   +-- asList.ts
 |   +-- auth.ts
+|   +-- commentVotesCache.ts
 |   +-- csrf.ts
 |   +-- db.ts
 |   +-- email-templates.ts
@@ -621,7 +631,10 @@
 |   |   +-- ip.ts
 |   +-- reader
 |   |   +-- settings.ts
-|   |   +-- ui-settings.ts
+|   |   +-- types.ts
+|   |   +-- useChapterData.ts
+|   |   +-- useChapterNavigation.ts
+|   |   +-- useReaderAuth.ts
 |   +-- realtime
 |   |   +-- sse-broker.ts
 |   +-- storage

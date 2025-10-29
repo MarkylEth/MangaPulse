@@ -1,6 +1,6 @@
 // app/title/[id]/v/[vol]/c/[chapter]/page.tsx
 import ChapterReader from '@/components/reader/ChapterReader';
-import ForceReaderDark from '@/components/ForceReaderDark';
+import ForceReaderDark from '@/components/reader/ForceReaderDark';
 import { abs } from '@/lib/abs';
 
 export const dynamic = 'force-dynamic';
