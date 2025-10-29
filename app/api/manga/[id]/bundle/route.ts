@@ -133,17 +133,25 @@ export async function GET(req: NextRequest, ctx: any) {
       ).then(r => r.rows || []).catch(() => []),
       
       // Chapters
-      query(
-        `select c.id, c.manga_id, c.chapter_number, c.title, c.created_at, c.published_at, 
-                c.updated_at, c.status, c.review_status, c.vol_number, c.volume_number, 
-                c.uploaded_by, p.username as uploader_username, p.avatar_url as uploader_avatar
-         from chapters c
-         left join profiles p on p.id = c.uploaded_by
-         where c.manga_id = $1
-           and (c.review_status = 'published' or c.status = 'published')
-         order by c.created_at desc`,
-        [mangaId]
-      ).then(r => (r.rows || []).map(normalizeChapter)).catch(() => []),
+// Chapters
+query(
+  `select c.id, c.manga_id, c.chapter_number, c.title, c.created_at, c.published_at, 
+          c.updated_at, c.status, c.review_status, c.vol_number, c.volume_number, 
+          c.uploaded_by, 
+          u.username as uploader_username, 
+          p.avatar_url as uploader_avatar
+   from chapters c
+   left join users u on u.id = c.uploaded_by
+   left join profiles p on p.user_id = c.uploaded_by
+   where c.manga_id = $1
+     and (lower(coalesce(c.review_status,'')) = 'published' 
+          or lower(coalesce(c.status,'')) = 'published')
+   order by c.created_at desc`,
+  [mangaId]
+).then(r => (r.rows || []).map(normalizeChapter)).catch((err) => {
+  console.error('[bundle] Chapters error:', err);
+  return [];
+}),
       
       // People (authors & artists)
       query(

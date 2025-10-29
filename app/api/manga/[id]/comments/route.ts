@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { query } from '@/lib/db';
 import { getAuthUser } from '@/lib/auth/route-guards';
 import { getLeaderTeamIdForTitle } from '@/lib/team/leader';
+
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -21,20 +22,14 @@ function toInt(v: unknown) {
 function b64encode(o: unknown) { return Buffer.from(JSON.stringify(o)).toString('base64url'); }
 function b64decode<T = any>(s: string) { return JSON.parse(Buffer.from(s, 'base64url').toString('utf8')) as T; }
 
-// очень простой «санитайзер»: оставляем только b/i/u/s/br/strong/em
+// оставляю твои sanitize/len/mapRow
 function sanitizeHtml(input: string): string {
-  // удаляем скрипты/стили/ивенты
   let html = input.replace(/<\s*\/?(script|style)[^>]*>/gi, '');
   html = html.replace(/\son\w+="[^"]*"/gi, '').replace(/\son\w+='[^']*'/gi, '');
-
-  // разрешённые теги
   const allowed = /<\/?(b|i|u|s|br|strong|em)\s*\/?>/gi;
-  // все теги -> пусто, кроме разрешённых
   html = html.replace(/<\/?[^>]+>/gi, (m) => (m.match(allowed) ? m : ''));
   return html;
 }
-
-// длина по «чистому» тексту (для лимитов 400/1000/∞)
 function plainLen(html: string): number {
   const text = String(html ?? '')
     .replace(/<br\s*\/?>/gi, '\n')
@@ -44,10 +39,7 @@ function plainLen(html: string): number {
     .trim();
   return text.length;
 }
-
-// приведение строки из БД к единому формату
 function mapRow(x: any) {
-  // нормализуем created_at → ISO 8601 (важно для курсора и ::timestamptz)
   const createdRaw = x.created_at;
   const createdISO =
     createdRaw instanceof Date
@@ -59,13 +51,15 @@ function mapRow(x: any) {
     manga_id: Number(x.manga_id),
     user_id: x.user_id ? String(x.user_id) : null,
     comment: String(x.comment ?? ''),
-    created_at: createdISO, // ← только ISO
+    created_at: createdISO,
     parent_id: x.parent_id ? String(x.parent_id) : null,
     is_team_comment: typeof x.is_team_comment === 'boolean' ? x.is_team_comment : null,
     team_id: x.team_id != null ? Number(x.team_id) : null,
-    is_pinned: typeof x.is_pinned === 'boolean' ? x.is_pinned : false,
-    is_hidden: typeof x.is_hidden === 'boolean' ? x.is_hidden : false,
+    is_pinned: !!x.is_pinned,
+    is_hidden: !!x.is_hidden,
     reports_count: x.reports_count != null ? Number(x.reports_count) : 0,
+    score: x._score != null ? Number(x._score) : 0,
+    my_vote: x._my_vote != null ? (Number(x._my_vote) as -1 | 0 | 1) : 0,
     profile: {
       id: x.user_id ? String(x.user_id) : null,
       username: x._profile_username ?? null,
@@ -74,77 +68,90 @@ function mapRow(x: any) {
   };
 }
 
-/* ======================== GET: список ======================== */
+/* ======================== GET ======================== */
 export async function GET(req: NextRequest, ctx: any) {
   try {
-    // В Next 15 params может быть промисом — дожидаемся (await на plain-объекте тоже безопасен)
+    const me = await getAuthUser(req).catch(() => null);
+    const myId: string | null = me?.id ?? null;
+
     const { id } = await ctx.params;
     const mangaId = toInt(id);
     if (!Number.isFinite(mangaId))
       return NextResponse.json({ ok: false, message: 'Bad id' }, { status: 400 });
 
     const sp = req.nextUrl.searchParams;
-    const paged = Number(sp.get('paged') ?? '0') === 1;
-    const limit = Math.min(Math.max(Number(sp.get('limit') ?? '15'), 1), 50);
+    const paged  = Number(sp.get('paged') ?? '0') === 1;
+    const limit  = Math.min(Math.max(Number(sp.get('limit') ?? '15'), 1), 50);
     const cursor = sp.get('cursor') || undefined;
 
     if (!paged) {
-      // === legacy-режим: как было раньше (всё сразу) ===
       const r = await query<any>(
         `
         select
           c.*,
-          p.username  as _profile_username,
-          p.avatar_url as _profile_avatar
+          u.username  as _profile_username,
+          p.avatar_url as _profile_avatar,
+          -- агрегированный рейтинг
+          coalesce((select sum(v.value)::int from comment_votes v where v.comment_id = c.id), 0) as _score,
+          -- мой голос
+          coalesce((select v2.value::int from comment_votes v2 where v2.comment_id = c.id and v2.user_id = $2::uuid limit 1), 0) as _my_vote
         from public.manga_comments c
-        left join public.profiles p on p.id = c.user_id
+        left join public.users    u on u.id      = c.user_id
+        left join public.profiles p on p.user_id = c.user_id
         where c.manga_id = $1
         order by c.created_at asc
         `,
-        [mangaId],
+        [mangaId, myId]
       );
       const items = (r.rows || []).map(mapRow);
-      return NextResponse.json({ ok: true, mode: 'legacy', items });
+      return NextResponse.json(
+        { ok: true, mode: 'legacy', items },
+        { status: 200, headers: { 'Cache-Control': 'no-store', 'Vary': 'Cookie', 'X-Content-Type-Options': 'nosniff' } }
+      );
     }
 
-    // === paged-режим: корневые постранично, плюс реплаи к видимым корням ===
-
-    // 1) все закреплённые корни (обычно мало)
+    // ----- pinned roots -----
     const pinnedQ = await query<any>(
       `
       select
         c.*,
-        p.username  as _profile_username,
-        p.avatar_url as _profile_avatar
+        u.username  as _profile_username,
+        p.avatar_url as _profile_avatar,
+        coalesce((select sum(v.value)::int from comment_votes v where v.comment_id = c.id), 0) as _score,
+        coalesce((select v2.value::int from comment_votes v2 where v2.comment_id = c.id and v2.user_id = $2::uuid limit 1), 0) as _my_vote
       from public.manga_comments c
-      left join public.profiles p on p.id = c.user_id
+      left join public.users    u on u.id      = c.user_id
+      left join public.profiles p on p.user_id = c.user_id
       where c.manga_id = $1
         and c.parent_id is null
         and coalesce(c.is_pinned, false) = true
       order by c.created_at desc, c.id desc
       `,
-      [mangaId],
+      [mangaId, myId]
     );
     const pinnedRoots = (pinnedQ.rows || []).map(mapRow);
 
-    // 2) незакреплённые корни — порционно по keyset
+    // ----- page roots -----
     let itemsQ;
     if (!cursor) {
       itemsQ = await query<any>(
         `
         select
           c.*,
-          p.username  as _profile_username,
-          p.avatar_url as _profile_avatar
+          u.username  as _profile_username,
+          p.avatar_url as _profile_avatar,
+          coalesce((select sum(v.value)::int from comment_votes v where v.comment_id = c.id), 0) as _score,
+          coalesce((select v2.value::int from comment_votes v2 where v2.comment_id = c.id and v2.user_id = $2::uuid limit 1), 0) as _my_vote
         from public.manga_comments c
-        left join public.profiles p on p.id = c.user_id
+        left join public.users    u on u.id      = c.user_id
+        left join public.profiles p on p.user_id = c.user_id
         where c.manga_id = $1
           and c.parent_id is null
           and coalesce(c.is_pinned, false) = false
         order by c.created_at desc, c.id desc
-        limit $2
+        limit $3
         `,
-        [mangaId, limit],
+        [mangaId, myId, limit]
       );
     } else {
       const c = b64decode<{ created_at: string; id: string }>(cursor);
@@ -152,78 +159,80 @@ export async function GET(req: NextRequest, ctx: any) {
         `
         select
           c.*,
-          p.username  as _profile_username,
-          p.avatar_url as _profile_avatar
+          u.username  as _profile_username,
+          p.avatar_url as _profile_avatar,
+          coalesce((select sum(v.value)::int from comment_votes v where v.comment_id = c.id), 0) as _score,
+          coalesce((select v2.value::int from comment_votes v2 where v2.comment_id = c.id and v2.user_id = $2::uuid limit 1), 0) as _my_vote
         from public.manga_comments c
-        left join public.profiles p on p.id = c.user_id
+        left join public.users    u on u.id      = c.user_id
+        left join public.profiles p on p.user_id = c.user_id
         where c.manga_id = $1
           and c.parent_id is null
           and coalesce(c.is_pinned, false) = false
-          and (c.created_at, c.id) < ($2::timestamptz, $3::uuid)
+          and (c.created_at, c.id) < ($3::timestamptz, $4::uuid)
         order by c.created_at desc, c.id desc
-        limit $4
+        limit $5
         `,
-        [mangaId, c.created_at, c.id, limit],
+        [mangaId, myId, c.created_at, c.id, limit]
       );
     }
-
     const pageRoots = (itemsQ.rows || []).map(mapRow);
 
-    // 3) Курсор считаем по последнему НЕзакреплённому корню
-    // 3) Курсор считаем по последнему НЕзакреплённому корню
     const nextCursor =
-    pageRoots.length === limit
-      ? (() => {
-          const last = pageRoots[pageRoots.length - 1];
-          const lastISO = new Date(last.created_at).toISOString();
-          return b64encode({ created_at: lastISO, id: last.id });
-        })()
-      : null;
+      pageRoots.length === limit
+        ? (() => {
+            const last = pageRoots[pageRoots.length - 1];
+            const lastISO = new Date(last.created_at).toISOString();
+            return b64encode({ created_at: lastISO, id: last.id });
+          })()
+        : null;
 
-    // 4) Подтягиваем ответы.
-    //    ВАЖНО: если это первая страница (cursor отсутствует) — берём детей для pinned + pageRoots.
-    //           Если это НЕ первая страница — только для pageRoots (чтобы не было дублей детей pinned).
+    // ----- children for visible roots -----
     const isFirstPage = !cursor;
     const rootsForChildren = isFirstPage ? [...pinnedRoots, ...pageRoots] : pageRoots;
 
     let children: ReturnType<typeof mapRow>[] = [];
     if (rootsForChildren.length > 0) {
-    const childrenQ = await query<any>(
-      `
-      select
-        c.*,
-        p.username  as _profile_username,
-        p.avatar_url as _profile_avatar
-      from public.manga_comments c
-      left join public.profiles p on p.id = c.user_id
-      where c.manga_id = $1
-        and c.parent_id = any($2::uuid[])
-      order by c.created_at desc, c.id desc
-      `,
-      [mangaId, rootsForChildren.map(r => r.id)],
-    );
-    children = (childrenQ.rows || []).map(mapRow);
+      const childrenQ = await query<any>(
+        `
+        select
+          c.*,
+          u.username  as _profile_username,
+          p.avatar_url as _profile_avatar,
+          coalesce((select sum(v.value)::int from comment_votes v where v.comment_id = c.id), 0) as _score,
+          coalesce((select v2.value::int from comment_votes v2 where v2.comment_id = c.id and v2.user_id = $3::uuid limit 1), 0) as _my_vote
+        from public.manga_comments c
+        left join public.users    u on u.id      = c.user_id
+        left join public.profiles p on p.user_id = c.user_id
+        where c.manga_id = $1
+          and c.parent_id = any($2::uuid[])
+        order by c.created_at desc, c.id desc
+        `,
+        [mangaId, rootsForChildren.map(r => r.id), myId]
+      );
+      children = (childrenQ.rows || []).map(mapRow);
     }
 
-    // 5) Возвращаем items
     const items = isFirstPage
-    ? [...pinnedRoots, ...pageRoots, ...children] // первая страница: показываем и pinned, и их детей
-    : [...pageRoots, ...children];               // последующие: pinned не дублируем вообще
+      ? [...pinnedRoots, ...pageRoots, ...children]
+      : [...pageRoots, ...children];
 
-    return NextResponse.json({ ok: true, mode: 'paged', items, nextCursor });
+    return NextResponse.json(
+      { ok: true, mode: 'paged', items, nextCursor },
+      { status: 200, headers: { 'Cache-Control': 'no-store', 'Vary': 'Cookie', 'X-Content-Type-Options': 'nosniff' } }
+    );
 
   } catch (e: any) {
     return jserr(e);
   }
 }
-
 /* ======================== POST: создать ======================== */
 export async function POST(req: NextRequest, ctx: any) {
   try {
     const me = await getAuthUser(req);
     if (!me?.id) return NextResponse.json({ ok: false, message: 'unauthorized' }, { status: 401 });
 
-    const { id } = await ctx.params; // await params — чтобы не ловить warning
+    const { id } = await ctx.params;
     const mangaId = toInt(id);
     if (!Number.isFinite(mangaId))
       return NextResponse.json({ ok: false, message: 'Bad id' }, { status: 400 });
@@ -237,11 +246,9 @@ export async function POST(req: NextRequest, ctx: any) {
     const pin = Boolean(body?.pin);
 
     if (!html) return NextResponse.json({ ok: false, message: 'Empty comment' }, { status: 422 });
-    // общий технический хард-лимит по размеру HTML сохраняем как было
     if (html.length > 8000)
       return NextResponse.json({ ok: false, message: 'Comment too long' }, { status: 413 });
 
-    // ── лимиты 400/1000/∞ по «чистому» тексту ─────────────────────
     const isAdminMod = me.role === 'admin' || me.role === 'moderator';
     const leaderTeamId = await getLeaderTeamIdForTitle(me.id, mangaId);
     const max = isAdminMod ? Number.POSITIVE_INFINITY : (leaderTeamId ? 1000 : 400);
@@ -252,11 +259,8 @@ export async function POST(req: NextRequest, ctx: any) {
       return NextResponse.json({ ok: false, message: `limit_exceeded:${shown}` }, { status: 400 });
     }
 
-    // санитайзим после проверок (логика сохранена)
     html = sanitizeHtml(html);
 
-    // «коммент от команды» только если юзер — лидер,
-    // пин на создании возможен только вместе с комментом от команды
     const isTeam = as_team && leaderTeamId != null;
     const teamId = isTeam ? Number(leaderTeamId) : null;
     const wantPinned = pin && isTeam ? true : false;
@@ -272,14 +276,18 @@ export async function POST(req: NextRequest, ctx: any) {
     );
     const row = ins.rows?.[0];
 
-    // подмешаем профиль
-    const prof = await query<any>(
-      `select username, avatar_url from public.profiles where id = $1 limit 1`,
+    const prof = await query(
+      `
+      select u.username, p.avatar_url
+      from public.users u
+      left join public.profiles p on p.user_id = u.id
+      where u.id = $1
+      limit 1
+      `,
       [me.id],
     );
     const profile = prof.rows?.[0] ?? null;
 
-    // нормализуем created_at и в POST-ответе тоже
     const createdISO =
       row?.created_at instanceof Date
         ? row.created_at.toISOString()
@@ -297,6 +305,8 @@ export async function POST(req: NextRequest, ctx: any) {
       is_pinned: !!row.is_pinned,
       is_hidden: !!row.is_hidden,
       reports_count: row.reports_count != null ? Number(row.reports_count) : 0,
+      score: 0,          // новые комменты — без голосов
+      my_vote: 0,
       profile: {
         id: String(me.id),
         username: profile?.username ?? null,
@@ -309,4 +319,3 @@ export async function POST(req: NextRequest, ctx: any) {
     return jserr(e);
   }
 }
-

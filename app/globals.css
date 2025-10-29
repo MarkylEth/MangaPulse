@@ -55,40 +55,32 @@
    ========================= */
 
 /* Спойлер-блок в новостях */
-details.spoiler {
-  display: inline-block;
-  background: rgba(128, 128, 128, 0.15);
-  border: 1px solid rgba(128, 128, 128, 0.25);
-  border-radius: 0.375rem;
-  padding: 0.25rem 0.5rem;
-  margin: 0 0.15rem;
+.spoiler-blur{
+  display: inline;                 /* строго inline */
   cursor: pointer;
-  transition: all 0.2s ease;
+  color: transparent;              /* прячем текст */
+  text-shadow: 0 0 .65em rgb(var(--foreground) / .95); /* “блюр” без сдвига верстки */
+  user-select: none;               /* нельзя копировать скрытое */
+  transition: color .15s ease, text-shadow .15s ease;
 }
 
-details.spoiler summary {
-  cursor: pointer;
-  list-style: none;
-  outline: none;
-  font-size: 0.875rem;
-  color: rgba(128, 128, 128, 0.9);
-  user-select: none;
+.spoiler-blur.revealed{
+  color: inherit;                  /* показываем текст */
+  text-shadow: none;
+  user-select: text;
 }
 
-details.spoiler summary::-webkit-details-marker { display: none; }
+/* a11y */
+.spoiler-blur:focus-visible{
+  outline: 2px solid rgb(var(--accent) / .55);
+  outline-offset: 2px;
+}
 
-/* Когда спойлер открыт - скрываем summary и показываем содержимое */
-details.spoiler[open] summary { display: none; }
-
-details.spoiler[open] {
+/* при выделении скрытого ничего не видно */
+.spoiler-blur:not(.revealed)::selection{
   background: transparent;
-  border: none;
-  padding: 0;
-  margin: 0;
+  color: transparent;
 }
-
-details.spoiler[open] > div { display: inline; }
-
 /* Светлая тема для спойлеров */
 html.light details.spoiler {
   background: rgba(100, 100, 100, 0.12);
@@ -152,6 +144,7 @@ html,
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--scrollbar-thumb)) transparent;
 }
+
 
 /* WebKit (Chrome/Edge/Safari) */
 html::-webkit-scrollbar,

@@ -89,10 +89,11 @@ async function fetchTeamsSafe(teamIds: number[]): Promise<TeamMap> {
 
 export async function GET(
   req: Request,
-  { params }: { params: { pageId: string } }
+  { params }: { params: Promise<{ pageId: string }> }
 ) {
   try {
-    const pageId = Number(params.pageId);
+    const { pageId: pageIdStr } = await params;
+    const pageId = Number(pageIdStr);
     if (!Number.isFinite(pageId)) {
       return NextResponse.json({ ok: false, error: 'bad page id' }, { status: 400 });
     }
@@ -171,10 +172,11 @@ export async function GET(
 
 export async function POST(
   req: Request,
-  { params }: { params: { pageId: string } }
+  { params }: { params: Promise<{ pageId: string }> }
 ) {
   try {
-    const pageId = Number(params.pageId);
+    const { pageId: pageIdStr } = await params;
+    const pageId = Number(pageIdStr);
     const body = await req.json().catch(() => ({}));
 
     const user_id: string | undefined = body.user_id;

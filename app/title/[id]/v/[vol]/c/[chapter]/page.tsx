@@ -1,5 +1,5 @@
 // app/title/[id]/v/[vol]/c/[chapter]/page.tsx
-import ChapterReader from '@/components/ChapterReader';
+import ChapterReader from '@/components/reader/ChapterReader';
 import ForceReaderDark from '@/components/ForceReaderDark';
 import { abs } from '@/lib/abs';
 
@@ -17,11 +17,10 @@ function normalizeVol(vol: string | undefined) {
 export default async function Page({ params }: { params: Params }) {
   const vol = normalizeVol(params.vol);
 
-  // опционально проверяем, что глава существует (не критично, можно убрать)
   await fetch(
     abs(`/api/reader/${params.id}/volume/${vol}/chapter/${params.chapter}`),
     { cache: 'no-store' }
-  ).catch(() => { /* notFound()/redirect при желании */ });
+  ).catch(() => {});
 
   return (
     <ForceReaderDark>
@@ -30,7 +29,6 @@ export default async function Page({ params }: { params: Params }) {
         vol={vol}
         chapter={params.chapter}
         page={params.page ?? '1'}
-        forceDark
       />
     </ForceReaderDark>
   );

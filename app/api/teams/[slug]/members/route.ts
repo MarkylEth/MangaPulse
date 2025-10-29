@@ -1,4 +1,4 @@
-// app/api/teams/[slug]/members/route.ts - ПРАВИЛЬНАЯ ВЕРСИЯ
+// app/api/teams/[slug]/members/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getViewerId } from '@/lib/auth/route-guards'
@@ -30,10 +30,11 @@ export async function GET(req: NextRequest, { params }: Params) {
         m.user_id::text, 
         m.role,
         m.added_at,
-        p.username, 
+        u.username, 
         p.avatar_url
       from translator_team_members m
-      left join profiles p on p.id = m.user_id
+      left join users u on u.id = m.user_id
+      left join profiles p on p.user_id = m.user_id
       where m.team_id = $1
       order by
         case m.role
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest, { params }: Params) {
           else 7
         end,
         m.added_at asc,
-        coalesce(p.username, '') asc
+        coalesce(u.username, '') asc
       `,
       [team.id]
     )
@@ -138,9 +139,9 @@ export async function POST(req: NextRequest, { params }: Params) {
           continue
         }
         
-        // Ищем пользователя по username
+        // Ищем пользователя по username в users (case-insensitive)
         const userResult = await query<{ id: string }>(
-          'select id from profiles where username = $1 limit 1',
+          'select id from users where lower(username) = lower($1) limit 1',
           [username]
         )
         
@@ -183,10 +184,11 @@ export async function POST(req: NextRequest, { params }: Params) {
            m.user_id::text, 
            m.role, 
            m.added_at,
-           p.username, 
+           u.username, 
            p.avatar_url
          from translator_team_members m
-         left join profiles p on p.id = m.user_id
+         left join users u on u.id = m.user_id
+         left join profiles p on p.user_id = m.user_id
          where m.team_id = $1
          order by
            case m.role
@@ -199,7 +201,7 @@ export async function POST(req: NextRequest, { params }: Params) {
              else 6
            end,
            m.added_at asc,
-           coalesce(p.username, '') asc`,
+           coalesce(u.username, '') asc`,
         [team.id]
       )
 

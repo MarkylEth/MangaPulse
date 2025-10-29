@@ -1,11 +1,13 @@
-﻿import { NextResponse } from 'next/server';
+﻿//app/api/chapters/[id]/metrics/route.ts
+import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const chapterId = Number(params.id || 0);
+    const { id } = await params;
+    const chapterId = Number(id || 0);
     if (!Number.isFinite(chapterId) || chapterId <= 0) {
       return NextResponse.json({ ok: true, likes: 0, likedByMe: false });
     }

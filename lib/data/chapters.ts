@@ -4,10 +4,6 @@ import { query } from '@/lib/db';
 type OrderBy = 'created_at' | 'number';
 type OrderDir = 'asc' | 'desc';
 
-/**
- * Публичные (published) главы для страницы тайтла.
- * Если в БД нет колонки status — тихо отдаем все главы без фильтра.
- */
 export async function getPublicChaptersByManga(
   mangaId: number,
   { limit = 0, order = 'desc', by = 'created_at' as OrderBy } = {}
@@ -24,34 +20,33 @@ export async function getPublicChaptersByManga(
   const lim = Math.max(0, Math.floor(limit));
   const limitSql = lim ? ` limit $${params.push(lim)}` : '';
 
-  // ВАЖНО: Используем volume, а также создаём алиас volume_index
-  const base = `
+  // ✅ Используем vol_number (как в таблице) + проверяем review_status
+  const sql = `
     select 
       id, 
       manga_id, 
       coalesce(chapter_number,0) as chapter_number,
-      volume,
-      volume as volume_index,
+      vol_number,
+      vol_number as volume_index,
       coalesce(title,'') as title,
-      status, 
+      status,
+      review_status,
       pages_count, 
       created_at, 
       updated_at
     from chapters
-    where manga_id = $1`;
-
-  const sqlWithStatus    = `${base} and lower(status) = 'published' order by ${orderBy}${limitSql}`;
-  const sqlWithoutStatus = `${base} order by ${orderBy}${limitSql}`;
+    where manga_id = $1
+      and (
+        lower(coalesce(status,'')) = 'published' 
+        or lower(coalesce(review_status,'')) = 'published'
+      )
+    order by ${orderBy}${limitSql}`;
 
   try {
-    const { rows } = await query(sqlWithStatus, params);
+    const { rows } = await query(sql, params);
     return rows;
   } catch (e: any) {
-    // 42703 = undefined_column — колонки status нет: повторяем без фильтра
-    if (e?.code === '42703' || /column .*status.* does not exist/i.test(String(e?.message || ''))) {
-      const { rows } = await query(sqlWithoutStatus, params);
-      return rows;
-    }
+    console.error('[getPublicChaptersByManga] Error:', e);
     throw e;
   }
 }

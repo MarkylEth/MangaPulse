@@ -10,8 +10,9 @@ export const revalidate = 0;
  * Источник данных: public.chapters.team_ids (int[]).
  * НИКАКИХ фолбэков — если массив пустой, возвращаем [].
  */
-export async function GET(_: Request, { params }: { params: { id: string } }) {
-  const idNum = Number(params.id);
+export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const idNum = Number(id);
   if (!Number.isFinite(idNum)) {
     return NextResponse.json({ ok: false, error: 'Bad chapter id' }, { status: 400 });
   }

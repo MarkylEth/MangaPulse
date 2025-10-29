@@ -26,11 +26,11 @@ export function sanitize(input: string) {
 
     if (pass.has(tag)) {
       const out = document.createElement(tag);
-      
+
       if (tag === 'details' && el.classList.contains('spoiler')) {
         out.classList.add('spoiler');
       }
-      
+
       if (tag === 'span') {
         const st = el.style;
         if (st.fontWeight === 'bold' || st.fontWeight === '700') out.style.fontWeight = 'bold';
@@ -77,10 +77,11 @@ const getServerLinesFromHtml = (html: string) => {
 };
 const getServerLinesFromEl = (el: HTMLElement) => getServerLinesFromHtml(el.innerHTML);
 
+/* Инлайновый спойлер c блюром */
 export function convertSpoilers(html: string) {
   return html.replace(
     /\|\|([\s\S]+?)\|\|/g,
-    '<details class="spoiler"><summary>Спойлер</summary><div>$1</div></details>'
+    '<span class="spoiler-blur" tabindex="0" role="button" aria-label="Спойлер — нажмите, чтобы показать">$1</span>'
   );
 }
 
@@ -94,10 +95,12 @@ export type CommentEditorProps = {
   submitting?: boolean;
   maxChars?: number | null;
   maxLines?: number | null;
+  /** 👉 что отрендерить справа в шапке редактора (например, кнопки сортировки) */
+  headerRight?: React.ReactNode;
 };
 
 export default function CommentEditor({
-  me, disabled, replyTo, onCancelReply, onSubmit, submitting, maxChars, maxLines = 35,
+  me, disabled, replyTo, onCancelReply, onSubmit, submitting, maxChars, maxLines = 35, headerRight,
 }: CommentEditorProps) {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -182,7 +185,7 @@ export default function CommentEditor({
       setTextLen(clipped.trim().length);
     }
 
-    const htmlToSend = convertSpoilers(currentHtml);
+    const htmlToSend = currentHtml; // сохраняем ||…||
     if (!htmlToSend) return;
     await onSubmit(htmlToSend, replyTo?.id ?? null);
 
@@ -191,23 +194,18 @@ export default function CommentEditor({
     setTextLen(0);
   }
 
-  // Обработчик нажатия пробела для сброса форматирования
   const handleSpace = () => {
     if (!me || disabled) return;
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) return;
-
-    // Вставляем обычный пробел без форматирования
     document.execCommand('insertHTML', false, ' ');
-    
-    // Сбрасываем все активные форматирования
     document.execCommand('removeFormat', false);
-    
     scheduleRecalc();
   };
 
   return (
     <div className="rounded-2xl p-3 sm:p-4 bg-white/70 dark:bg-[#0f1115]/70 border border-black/10 dark:border-white/10 backdrop-blur-xl shadow-[0_10px_40px_-20px_rgba(0,0,0,.6)]">
+      {/* Верхняя панель */}
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <IconBtn icon={<Bold className="w-4 h-4" />} onClick={() => exec('bold')} disabled={!me || disabled} label="Жирный (Ctrl+B)" />
@@ -217,21 +215,10 @@ export default function CommentEditor({
           <IconBtn icon={<EyeOff className="w-4 h-4" />} onClick={wrapSpoiler} disabled={!me || disabled} label="Спойлер (Ctrl+Shift+S)" />
         </div>
 
-        {maxChars != null && (
-          <div
-            className={`text-[11px] px-2 py-1 rounded-full border border-black/10 dark:border-white/10 bg-black/[0.03] dark:bg-white/[0.04] ${
-              !maxChars
-                ? 'text-gray-500'
-                : textLen / (maxChars || 1) >= 0.9
-                ? 'text-red-500'
-                : textLen / (maxChars || 1) >= 0.8
-                ? 'text-amber-600'
-                : 'text-gray-500'
-            }`}
-          >
-            {textLen} / {maxChars}
-          </div>
-        )}
+        {/* справа теперь только кастомный контент (например, кнопки сортировки) */}
+        <div className="flex items-center gap-2">
+          {headerRight}
+        </div>
       </div>
 
       {replyTo && (
@@ -288,7 +275,6 @@ export default function CommentEditor({
             if (!me || disabled) return;
             const key = e.key.toLowerCase();
 
-            // Обработка пробела для сброса форматирования
             if (e.key === ' ' && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
               e.preventDefault();
               handleSpace();
@@ -296,46 +282,19 @@ export default function CommentEditor({
             }
 
             if ((e.ctrlKey || e.metaKey) && !e.altKey) {
-              if (key === 'b') {
-                e.preventDefault();
-                exec('bold');
-                return;
-              }
-              if (key === 'i') {
-                e.preventDefault();
-                exec('italic');
-                return;
-              }
-              if (key === 'u') {
-                e.preventDefault();
-                exec('underline');
-                return;
-              }
-              if (e.shiftKey && key === 'x') {
-                e.preventDefault();
-                exec('strikeThrough');
-                return;
-              }
-              if (e.shiftKey && key === 's') {
-                e.preventDefault();
-                wrapSpoiler();
-                return;
-              }
-              if (key === 'enter') {
-                e.preventDefault();
-                void handleSubmit();
-                return;
-              }
+              if (key === 'b') { e.preventDefault(); exec('bold'); return; }
+              if (key === 'i') { e.preventDefault(); exec('italic'); return; }
+              if (key === 'u') { e.preventDefault(); exec('underline'); return; }
+              if (e.shiftKey && key === 'x') { e.preventDefault(); exec('strikeThrough'); return; }
+              if (e.shiftKey && key === 's') { e.preventDefault(); wrapSpoiler(); return; }
+              if (key === 'enter') { e.preventDefault(); void handleSubmit(); return; }
             }
 
             if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
               if (maxLines != null && maxLines > 0) {
                 const el = editorRef.current!;
                 const lines = getServerLinesFromEl(el);
-                if (lines >= (maxLines as number)) {
-                  e.preventDefault();
-                  return;
-                }
+                if (lines >= (maxLines as number)) { e.preventDefault(); return; }
               }
             }
 
@@ -347,7 +306,24 @@ export default function CommentEditor({
         />
       </div>
 
-      <div className="mt-3 flex items-center gap-2">
+      {/* Нижняя панель: слева лимит символов, справа — кнопка отправки */}
+      <div className="mt-3 flex items-center justify-between gap-2">
+        {maxChars != null && (
+          <div
+            className={`text-[11px] px-2 py-1 rounded-full border border-black/10 dark:border-white/10 bg-black/[0.03] dark:bg-white/[0.04] ${
+              !maxChars
+                ? 'text-gray-500'
+                : ratio >= 0.9
+                ? 'text-red-500'
+                : ratio >= 0.8
+                ? 'text-amber-600'
+                : 'text-gray-500'
+            }`}
+          >
+            {textLen} / {maxChars}
+          </div>
+        )}
+
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={handleSubmit}

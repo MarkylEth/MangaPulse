@@ -1,11 +1,11 @@
 // app/title/[id]/v/[vol]/c/[chapter]/p/[p]/page.tsx
-import ChapterReader from '@/components/ChapterReader';
+import ChapterReader from '@/components/reader/ChapterReader';
 
 type Params = {
-  id: string;       // может быть "6-yakutia"
-  vol: string;      // номер тома или 'none'
-  chapter: string;  // номер главы
-  p: string;        // страница
+  id: string;
+  vol: string;
+  chapter: string;
+  p: string;
 };
 
 export const dynamic = 'force-dynamic';
@@ -13,11 +13,12 @@ export const dynamic = 'force-dynamic';
 function normalizeId(id: string) {
   return id.match(/\d+/)?.[0] ?? id;
 }
+
 function normalizeVol(vol: string | undefined) {
   if (vol == null) return 'none';
   const v = String(vol).trim();
   if (!v || v.toLowerCase() === 'undefined' || v.toLowerCase() === 'null') return 'none';
-  return v; // сохраняем '0' и любые реальные значения
+  return v;
 }
 
 export default async function Page({ params }: { params: Params }) {
@@ -31,7 +32,6 @@ export default async function Page({ params }: { params: Params }) {
       vol={vol}
       chapter={params.chapter}
       page={page}
-      forceDark
     />
   );
 }

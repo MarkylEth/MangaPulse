@@ -36,12 +36,12 @@ export async function GET(req: NextRequest, { params }: Params) {
       c.created_at,
       c.updated_at,
       c.parent_id::text,
-      p.username,
+      u.username,
       p.avatar_url,
-      m.role as team_role                 -- ВАЖНО: роль в этой команде
+      m.role as team_role
     from team_post_comments c
-    left join profiles p
-      on p.id = c.user_id
+    left join users u on u.id = c.user_id
+    left join profiles p on p.user_id = c.user_id
     left join translator_team_members m
       on m.team_id = $2 and m.user_id = c.user_id
     where c.post_id = $1::uuid
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       [postId]
     )
 
-    // Вернём подготовленный объект с ролью и профилем
+    // Вернём подготовленный объект с ролью и профилем (username — из users)
     const one = await query<{
       id: string; post_id: string; user_id: string; content: string;
       parent_id: string | null; created_at: string; updated_at: string;
@@ -111,11 +111,12 @@ export async function POST(req: NextRequest, { params }: Params) {
         c.parent_id::text,
         c.created_at,
         c.updated_at,
-        p.username,
+        u.username,
         p.avatar_url,
         m.role as team_role
       from team_post_comments c
-      left join profiles p on p.id = c.user_id
+      left join users u on u.id = c.user_id
+      left join profiles p on p.user_id = c.user_id
       left join translator_team_members m
         on m.team_id = $2 and m.user_id = c.user_id
       where c.id = $1::uuid

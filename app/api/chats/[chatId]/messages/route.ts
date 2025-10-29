@@ -39,18 +39,22 @@ export async function GET(req: Request, ctx: { params: { chatId: string } }) {
         m.id, m.chat_id, m.user_id, m.body, COALESCE(m.kind,'text') AS kind,
         m.attachments, m.reply_to_id,
         m.created_at, m.edited_at, m.deleted_at,
-        p.username, p.full_name, p.avatar_url,
+
+        u.username, p.full_name, p.avatar_url,
 
         r.id          AS reply_id,
         r.user_id     AS reply_user_id,
         r.body        AS reply_body,
         r.created_at  AS reply_created_at,
+        ru.username   AS reply_username,
         rp.full_name  AS reply_full_name,
         rp.avatar_url AS reply_avatar_url
       FROM chat_messages m
-      LEFT JOIN profiles p  ON p.id  = m.user_id
+      LEFT JOIN users u        ON u.id = m.user_id
+      LEFT JOIN profiles p     ON p.user_id = m.user_id
       LEFT JOIN chat_messages r ON r.id = m.reply_to_id
-      LEFT JOIN profiles rp ON rp.id = r.user_id
+      LEFT JOIN users ru       ON ru.id = r.user_id
+      LEFT JOIN profiles rp    ON rp.user_id = r.user_id
       WHERE m.chat_id = $1
         AND m.deleted_at IS NULL
         AND ($2 = 0 OR m.id < $2)
@@ -124,6 +128,7 @@ export async function GET(req: Request, ctx: { params: { chatId: string } }) {
             body: row.reply_body,
             created_at: row.reply_created_at,
             user: {
+              username: row.reply_username,
               full_name: row.reply_full_name,
               avatar_url: row.reply_avatar_url,
             },
@@ -205,20 +210,25 @@ export async function POST(req: Request, ctx: { params: { chatId: string } }) {
       [chatId, me.id, message.id]
     );
 
-    // Профиль автора
+    // Профиль автора (через users u + profiles p)
     const profileResult = await query(
-      `SELECT username, full_name, avatar_url FROM profiles WHERE id = $1::uuid`,
+      `SELECT u.username, p.full_name, p.avatar_url 
+       FROM users u
+       LEFT JOIN profiles p ON p.user_id = u.id
+       WHERE u.id = $1::uuid`,
       [me.id]
     );
     const profile = profileResult.rows[0];
 
-    // Если это ответ — подтянем короткие данные исходного сообщения
+    // Если это ответ — подтянем короткие данные исходного сообщения (u.username + p.*)
     let replyObj: any = null;
     if (replyToId) {
       const r = await query(
-        `SELECT m.id, m.user_id, m.body, m.created_at, p.full_name, p.avatar_url
+        `SELECT m.id, m.user_id, m.body, m.created_at, 
+                u.username, p.full_name, p.avatar_url
          FROM chat_messages m
-         LEFT JOIN profiles p ON p.id = m.user_id
+         LEFT JOIN users u    ON u.id = m.user_id
+         LEFT JOIN profiles p ON p.user_id = m.user_id
          WHERE m.id=$1`,
         [replyToId]
       );
@@ -229,7 +239,7 @@ export async function POST(req: Request, ctx: { params: { chatId: string } }) {
           user_id: x.user_id,
           body: x.body,
           created_at: x.created_at,
-          user: { full_name: x.full_name, avatar_url: x.avatar_url },
+          user: { username: x.username, full_name: x.full_name, avatar_url: x.avatar_url },
         };
       }
     }
@@ -257,4 +267,3 @@ export async function POST(req: Request, ctx: { params: { chatId: string } }) {
     );
   }
 }
-

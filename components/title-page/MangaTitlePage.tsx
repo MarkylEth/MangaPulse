@@ -14,7 +14,18 @@ import { MoreHorizontal } from 'lucide-react';
 
 import { useMangaBundle } from '../../hooks/MangaHooks';
 import { safeJson } from 'lib/utils';
-import type { MangaTitlePageProps, Chapter, ChapterGroup, Manga, Genre, RatingRow, Team, PersonLink, PublisherLink, MeInfo } from './types';
+import type {
+  MangaTitlePageProps,
+  Chapter,
+  ChapterGroup,
+  Manga,
+  Genre,
+  RatingRow,
+  Team,
+  PersonLink,
+  PublisherLink,
+  MeInfo,
+} from './types';
 
 import { StarRating5Static } from './StarRating';
 import RatingModalLinear from './RatingModalLinear';
@@ -22,7 +33,7 @@ import ChaptersPanel from './ChaptersPanel';
 import DescriptionInfo from './DescriptionInfo';
 import SidebarProgress from './SidebarProgress';
 
-// Новый тип для SSR данных
+/* ==================== SSR initial ==================== */
 interface InitialData {
   manga: Manga | null;
   chapters: Chapter[];
@@ -39,7 +50,7 @@ interface InitialData {
 
 interface Props {
   mangaId: number;
-  initialData?: InitialData; // NEW: все данные сразу
+  initialData?: InitialData;
   isLoggedIn: boolean;
 }
 
@@ -47,7 +58,6 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
   const router = useRouter();
   const pathname = usePathname();
 
-  // Если есть initialData, используем напрямую, иначе загружаем через хук
   const hasInitialData = !!initialData;
 
   const [manga, setManga] = React.useState<Manga | null>(initialData?.manga ?? null);
@@ -69,6 +79,8 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
   const [publishers, setPublishers] = React.useState<PublisherLink[]>(initialData?.publishers ?? []);
   const [bookmark, setBookmark] = React.useState(initialData?.bookmark ?? null);
 
+  const [loading, setLoading] = React.useState(!hasInitialData);
+
   const realId = manga?.id ?? mangaId;
   const mid = realId;
   const logged = typeof isLoggedIn === 'boolean' ? isLoggedIn : !!me;
@@ -78,12 +90,12 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
   const [rateOpen, setRateOpen] = React.useState(false);
   const [rateValue, setRateValue] = React.useState<number | null>(null);
   const [menuOpen, setMenuOpen] = React.useState(false);
-  const [loading, setLoading] = React.useState(!hasInitialData);
   const menuRef = React.useRef<HTMLDivElement | null>(null);
 
   const canEdit = (me?.role === 'moderator' || me?.role === 'admin') ?? false;
   const isLeader = Boolean(me?.leaderTeamId);
 
+  /* ============ body scroll lock for rating modal ============ */
   React.useEffect(() => {
     const root = document.documentElement;
     if (rateOpen) {
@@ -100,6 +112,7 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
     };
   }, [rateOpen]);
 
+  /* ============ outside click to close menu ============ */
   React.useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
@@ -112,18 +125,77 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
   const slugCandidate = romajiSlug(rawTitle);
   const slugId = slugCandidate ? makeIdSlug(mid, slugCandidate) : String(mid);
 
+  /* ============ keep pretty slug in URL ============ */
   React.useEffect(() => {
     if (!manga) return;
     const want = `/title/${slugId}`;
     if (pathname !== want) router.replace(want, { scroll: false });
   }, [manga, slugId, pathname, router]);
 
+  /* ============ client-side load when no initialData ============ */
+  React.useEffect(() => {
+    if (hasInitialData) {
+      setLoading(false);
+      return;
+    }
+    let stop = false;
+    (async () => {
+      try {
+        const r = await fetch(`/api/manga/${mangaId}/bundle`, {
+          credentials: 'include',
+          cache: 'no-store',
+          headers: { Accept: 'application/json' },
+        });
+        const j = await safeJson<any>(r);
+        if (stop) return;
+
+        setManga(j?.manga ?? null);
+
+        const list = Array.isArray(j?.chapters) ? j.chapters : [];
+        setChapters(
+          list.map((c: any) => ({
+            ...c,
+            chapter_number: Number(c.chapter_number),
+            vol_number: c.vol_number == null ? null : Number(c.vol_number),
+          }))
+        );
+
+        const g = Array.isArray(j?.genres) ? j.genres : [];
+        setGenres(
+          g.map((name: string, i: number) => ({
+            id: `local-${i}`,
+            manga_id: mangaId,
+            genre: name,
+          }))
+        );
+
+        setTags(Array.isArray(j?.tags) ? j.tags : []);
+        setRatings(Array.isArray(j?.ratings) ? j.ratings : []);
+        setTeams(Array.isArray(j?.teams) ? j.teams : []);
+        setMe(j?.me ?? null);
+        setAuthors(Array.isArray(j?.authors) ? j.authors : []);
+        setArtists(Array.isArray(j?.artists) ? j.artists : []);
+        setPublishers(Array.isArray(j?.publishers) ? j.publishers : []);
+        setBookmark(j?.bookmark ?? null);
+      } catch (e) {
+        console.error('[MangaTitlePage] bundle load error:', e);
+      } finally {
+        if (!stop) setLoading(false);
+      }
+    })();
+    return () => {
+      stop = true;
+    };
+  }, [hasInitialData, mangaId]);
+
+  /* ============ rating aggregates ============ */
   const ratingAverage =
     ratings.length > 0
       ? Number((ratings.reduce((s, r) => s + (Number(r.rating) || 0), 0) / ratings.length).toFixed(2))
       : manga?.rating ?? 0;
   const ratingCount = ratings.length || (manga?.rating_count ?? 0);
 
+  /* ============ group chapters by volume ============ */
   const chapterGroups: ChapterGroup[] = React.useMemo(() => {
     const map = new Map<number | 'no-vol', Chapter[]>();
     for (const ch of chapters) {
@@ -198,6 +270,7 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
 
       <div className="mx-auto max-w-[1400px] px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr_320px] gap-8">
+          {/* LEFT */}
           <div className="flex flex-col gap-4">
             <div className="relative rounded-2xl overflow-hidden w-full aspect-[2/3] border border-border/50 bg-card">
               <Image src={manga.cover_url || '/cover-placeholder.png'} alt={manga.title} fill priority className="object-cover" />
@@ -207,6 +280,7 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
             </div>
           </div>
 
+          {/* CENTER */}
           <div className="flex flex-col gap-4">
             <div>
               <h1 className="text-4xl font-bold mb-1">{manga.title}</h1>
@@ -276,15 +350,40 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
 
             <div className="mt-4">
               {tab === 'description' && (
-                <DescriptionInfo manga={manga} rawDesc={rawDesc} authors={authors} artists={artists} publishers={publishers} genres={genres} tags={tags} />
+                <DescriptionInfo
+                  manga={manga}
+                  rawDesc={rawDesc}
+                  authors={authors}
+                  artists={artists}
+                  publishers={publishers}
+                  genres={genres}
+                  tags={tags}
+                />
               )}
 
               {tab === 'chapters' && (
-                <ChaptersPanel canEdit={canEdit} isLeader={isLeader} onAdded={reloadChapters} groups={chapterGroups} slugId={slugId} bookmark={bookmark} mid={mid} chapters={chapters} />
+                <ChaptersPanel
+                  canEdit={canEdit}
+                  isLeader={isLeader}
+                  onAdded={reloadChapters}
+                  groups={chapterGroups}
+                  slugId={slugId}
+                  bookmark={bookmark}
+                  mid={mid}
+                  chapters={chapters}
+                />
               )}
 
+              {/* ====== КОММЕНТАРИИ ====== */}
               <div className={tab === 'comments' ? 'block' : 'hidden'}>
-                <CommentSection mangaId={mid} me={me ? { id: me.id, role: me.role ?? null } : null} canEdit={canEdit} leaderTeamId={me?.leaderTeamId ?? null} />
+                <CommentSection
+                  mangaId={mid}
+                  me={me ? { id: me.id, role: me.role ?? null } : null}
+                  canEdit={canEdit}
+                  leaderTeamId={me?.leaderTeamId ?? null}
+                  /* initialItems можно пробросить, если вернёте их из SSR bundle:
+                     initialItems={initialData?.comments} */
+                />
               </div>
 
               {tab === 'team' && (
@@ -318,6 +417,7 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
             </div>
           </div>
 
+          {/* RIGHT */}
           <div className="flex flex-col gap-4">
             <SidebarProgress bookmark={bookmark} chapters={chapters} slugId={slugId} firstChapterId={firstChapterId} />
 
@@ -371,7 +471,6 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
       });
       const j = await safeJson<{ ok?: boolean; message?: string }>(r);
       if (!r.ok) throw new Error(j?.message || `HTTP ${r.status}`);
-      
       router.refresh();
     } catch (err) {
       console.error('Rating error:', err);

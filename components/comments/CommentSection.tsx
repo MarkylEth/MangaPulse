@@ -2,9 +2,14 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-// ⬇⬇⬇ было: import { CommentEditor, type ReplyTo } from './CommentEditor';
 import CommentEditor, { type ReplyTo } from './CommentEditor';
 import { CommentList, type CommentRow } from './CommentList';
+import {
+  queueVote as cacheQueueVote,
+  applyPendingVotes,
+  flushPending as flushPendingVotes,
+  type VoteVal,
+} from '@/lib/commentVotesCache';
 
 /* ===== utils ===== */
 async function safeJson<T = any>(res: Response): Promise<T | null> {
@@ -30,6 +35,8 @@ async function getJson(url: string) {
   }
 }
 
+type SortMode = 'popular' | 'new' | 'old';
+
 export default function CommentSection({
   mangaId,
   me,
@@ -54,6 +61,14 @@ export default function CommentSection({
   const [isPaged, setIsPaged] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // по умолчанию — «Новые»
+  const [sortMode, setSortMode] = useState<SortMode>('new');
+
+  // ⬇ на каждом заходе страницы пробуем выгрузить накопленные голоса
+  useEffect(() => {
+    void flushPendingVotes(mangaId);
+  }, [mangaId]);
+
   useEffect(() => {
     if (loaded) return;
     let stop = false;
@@ -61,10 +76,12 @@ export default function CommentSection({
       let res: any = await getJson(`/api/manga/${mangaId}/comments?paged=1&limit=15`);
       if (stop) return;
 
+      const apply = (arr: CommentRow[]) => applyPendingVotes(arr, mangaId);
+
       if (res?.mode === 'paged') {
         setIsPaged(true);
-        const rootsOnly: CommentRow[] = [...(res.pinned ?? []), ...(res.items ?? [])];
-        setItems(rootsOnly);
+        const rootsOnly: CommentRow[] = Array.isArray(res.items) ? res.items : [];
+        setItems(apply(rootsOnly));
         setCursor(res.nextCursor ?? null);
         setLoaded(true);
         return;
@@ -72,7 +89,7 @@ export default function CommentSection({
 
       res = await getJson(`/api/manga/${mangaId}/comments`);
       if (stop) return;
-      if (Array.isArray(res?.items)) setItems(res.items);
+      if (Array.isArray(res?.items)) setItems(apply(res.items));
       setIsPaged(false);
       setCursor(null);
       setLoaded(true);
@@ -92,14 +109,16 @@ export default function CommentSection({
   }, [items]);
 
   const reload = useCallback(async () => {
+    const apply = (arr: CommentRow[]) => applyPendingVotes(arr, mangaId);
+
     if (!isPaged) {
       const res: any = await getJson(`/api/manga/${mangaId}/comments`);
-      if (Array.isArray(res?.items)) setItems(res.items);
+      if (Array.isArray(res?.items)) setItems(apply(res.items));
       return;
     }
     const res: any = await getJson(`/api/manga/${mangaId}/comments?paged=1&limit=15`);
-    const rootsOnly: CommentRow[] = [...(res?.pinned ?? []), ...(res?.items ?? [])];
-    setItems(rootsOnly);
+    const rootsOnly: CommentRow[] = Array.isArray(res?.items) ? res.items : [];
+    setItems(apply(rootsOnly));
     setCursor(res?.nextCursor ?? null);
   }, [mangaId, isPaged]);
 
@@ -154,9 +173,7 @@ export default function CommentSection({
       if (!res.ok) {
         setItems(prev =>
           prev.map(x =>
-            x.parent_id == null
-              ? (x.id === c.id ? { ...x, is_pinned: !target } : x)
-              : x
+            x.parent_id == null ? (x.id === c.id ? { ...x, is_pinned: !target } : x) : x
           )
         );
         throw new Error((j as any)?.message || `HTTP ${res.status}`);
@@ -192,6 +209,28 @@ export default function CommentSection({
     })));
   }, []);
 
+  // ===== Голосование: только локально + запись в кэш (без запроса)
+  const vote = useCallback(
+    async (id: string, next: VoteVal) => {
+      if (!me) { alert('Нужно войти'); return; }
+
+      // мгновенный UI
+      setItems(prev =>
+        prev.map(c => {
+          if (c.id !== id) return c;
+          const curr = (c.my_vote ?? 0) as VoteVal;
+          const score = Number(c.score ?? 0);
+          const delta = next - curr;
+          return { ...c, my_vote: next, score: score + delta };
+        })
+      );
+
+      // кладём в кэш — отправится при следующем визите/обновлении
+      cacheQueueVote(mangaId, id, next);
+    },
+    [me, mangaId]
+  );
+
   const loadMore = useCallback(async () => {
     if (!isPaged || !cursor || loadingMore) return;
     setLoadingMore(true);
@@ -199,7 +238,7 @@ export default function CommentSection({
       const res: any = await getJson(
         `/api/manga/${mangaId}/comments?paged=1&limit=15&cursor=${encodeURIComponent(cursor)}`
       );
-      const more: CommentRow[] = res?.items ?? [];
+      const more: CommentRow[] = applyPendingVotes(res?.items ?? [], mangaId);
       setItems(prev => {
         const seen = new Set(prev.map(x => x.id));
         const deduped = more.filter(x => !seen.has(x.id));
@@ -211,6 +250,24 @@ export default function CommentSection({
     }
   }, [isPaged, cursor, loadingMore, mangaId]);
 
+  // Кнопки сортировки — в шапке редактора
+  const sortButtons = (
+    <div className="flex items-center gap-2">
+      {(['new', 'popular', 'old'] as const).map(k => (
+        <button
+          key={k}
+          onClick={() => setSortMode(k)}
+          className={`px-3 py-1.5 rounded-lg border text-sm transition-colors
+            ${sortMode === k
+              ? 'bg-black/10 dark:bg-white/10 border-black/20 dark:border-white/20'
+              : 'bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5'}`}
+        >
+          {k === 'popular' ? 'Популярные' : k === 'new' ? 'Новые' : 'Старые'}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="space-y-4">
       <CommentEditor
@@ -220,6 +277,7 @@ export default function CommentSection({
         onCancelReply={() => setReplyTo(null)}
         onSubmit={submit}
         submitting={submitting}
+        headerRight={sortButtons}
       />
 
       <CommentList
@@ -233,6 +291,8 @@ export default function CommentSection({
         onPinnedToggle={(c) => togglePin(c, !c.is_pinned)}
         onDelete={del}
         onReportedLocally={bumpReportLocally}
+        sortMode={sortMode}
+        onVote={vote}
         externalLoadMore={
           isPaged
             ? {

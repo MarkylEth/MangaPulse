@@ -1,6 +1,6 @@
 // lib/auth/route-guards.ts
 import type { NextRequest } from 'next/server';
-import { query } from '@/lib/db';
+import { query, queryAsUser } from '@/lib/db';
 import { getSessionToken, verifySession } from '@/lib/auth/session';
 
 /* ====================== Types ====================== */
@@ -57,7 +57,7 @@ export async function getAuthUser(req?: Request | NextRequest): Promise<AuthUser
 
   try {
     const token = await getSessionToken();
-    const payload = await verifySession(token); // ← await обязательный
+    const payload = await verifySession(token);
     if (payload?.sub) userId = payload.sub;
   } catch {}
 
@@ -67,7 +67,8 @@ export async function getAuthUser(req?: Request | NextRequest): Promise<AuthUser
   }
   if (!userId) return null;
 
-  const { rows } = await query<{
+  // ✅ ИСПОЛЬЗУЙ queryAsUser() вместо query()
+  const { rows } = await queryAsUser<{
     id: string;
     email: string | null;
     username: string | null;
@@ -83,10 +84,11 @@ export async function getAuthUser(req?: Request | NextRequest): Promise<AuthUser
      FROM users u
      LEFT JOIN profiles p ON p.user_id = u.id
      LEFT JOIN translator_team_members ttm 
-       ON ttm.user_id = u.id AND (ttm.is_leader = true OR ttm.role = 'leader')
+       ON ttm.user_id = u.id AND ttm.role = 'leader'
      WHERE u.id = $1
      LIMIT 1`,
-    [userId]
+    [userId],
+    userId
   );
 
   if (!rows[0]) return null;
