@@ -1,5 +1,6 @@
 ﻿// app/api/moderation/comments/route.ts
 import { NextResponse } from "next/server";
+import { requireRole } from "@/lib/auth/session";
 export const dynamic = "force-dynamic";
 
 /* ========= DB helper (Neon) ========= */
@@ -48,11 +49,14 @@ type ApiItem = {
   author_name: string | null;
   reports_count: number;
   is_hidden: boolean;
+  whitelisted: boolean; // ДОБАВЛЕНО
 };
 
 /* ========= GET ========= */
 export async function GET(req: Request) {
   try {
+    await requireRole('moderator');
+
     const sql = await getSql();
     if (!sql) return NextResponse.json({ ok: false, error: "DB not configured" }, { status: 500 });
 
@@ -82,7 +86,8 @@ export async function GET(req: Request) {
             from public.comment_reports cr
             where cr.source='manga' and cr.comment_id = c.id and cr.status='open'
           ),0) as reports_count,
-          coalesce((to_jsonb(c)->>'is_hidden')::boolean, false) as is_hidden
+          coalesce((to_jsonb(c)->>'is_hidden')::boolean, false) as is_hidden,
+          coalesce((to_jsonb(c)->>'whitelisted')::boolean, false) as whitelisted
         from public.manga_comments c
       ),
       pc as (
@@ -103,7 +108,8 @@ export async function GET(req: Request) {
             from public.comment_reports cr
             where cr.source='page' and cr.comment_id = c.id and cr.status='open'
           ),0) as reports_count,
-          coalesce((to_jsonb(c)->>'is_hidden')::boolean, false) as is_hidden
+          coalesce((to_jsonb(c)->>'is_hidden')::boolean, false) as is_hidden,
+          coalesce((to_jsonb(c)->>'whitelisted')::boolean, false) as whitelisted
         from public.page_comments c
       ),
       tc as (
@@ -138,7 +144,8 @@ export async function GET(req: Request) {
             from public.comment_reports cr
             where cr.source='post' and cr.comment_id = c.id and cr.status='open'
           ),0) as reports_count,
-          coalesce((to_jsonb(c)->>'is_hidden')::boolean, false) as is_hidden
+          coalesce((to_jsonb(c)->>'is_hidden')::boolean, false) as is_hidden,
+          coalesce((to_jsonb(c)->>'whitelisted')::boolean, false) as whitelisted
         from public.team_post_comments c
       ),
       unioned as (
@@ -191,6 +198,7 @@ export async function GET(req: Request) {
       author_name: r.author_name ? String(r.author_name) : null,
       reports_count: Number(r.reports_count ?? 0),
       is_hidden: Boolean(r.is_hidden),
+      whitelisted: Boolean(r.whitelisted), // ДОБАВЛЕНО
     }));
 
     return NextResponse.json({ ok: true, items, total });
@@ -202,6 +210,8 @@ export async function GET(req: Request) {
 /* ========= POST ========= */
 export async function POST(req: Request) {
   try {
+    await requireRole('moderator');
+
     const sql = await getSql();
     if (!sql) return NextResponse.json({ ok: false, error: "DB not configured" }, { status: 500 });
 
@@ -212,7 +222,8 @@ export async function POST(req: Request) {
     if (!["manga", "page", "post"].includes(String(source))) {
       return NextResponse.json({ ok: false, error: "Bad source" }, { status: 400 });
     }
-    if (!["approve", "reject", "delete"].includes(String(action))) {
+    // ДОБАВЛЕНО: whitelist в список допустимых действий
+    if (!["approve", "reject", "delete", "whitelist"].includes(String(action))) {
       return NextResponse.json({ ok: false, error: "Bad action" }, { status: 400 });
     }
     if (!isUUID(String(id))) {
@@ -224,10 +235,65 @@ export async function POST(req: Request) {
       source === "page"  ? "page_comments"  :
                            "team_post_comments";
 
-    const hasClosedAt   = await columnExists(sql, "public", "comment_reports", "closed_at");
-    const hasReason     = await columnExists(sql, "public", "comment_reports", "mod_reason");
-    const hasHidden     = await columnExists(sql, "public", table, "is_hidden");
-    const hasRepCount   = await columnExists(sql, "public", table, "reports_count");
+    const hasClosedAt    = await columnExists(sql, "public", "comment_reports", "closed_at");
+    const hasReason      = await columnExists(sql, "public", "comment_reports", "mod_reason");
+    const hasHidden      = await columnExists(sql, "public", table, "is_hidden");
+    const hasRepCount    = await columnExists(sql, "public", table, "reports_count");
+    const hasWhitelisted = await columnExists(sql, "public", table, "whitelisted"); // ДОБАВЛЕНО
+
+    /* ---- НОВОЕ: whitelist ---- */
+    if (action === "whitelist") {
+      // Занести в белый список
+      if (hasWhitelisted) {
+        if (source === "manga") {
+          await sql`
+            update public.manga_comments 
+            set whitelisted=true, is_hidden=false, reports_count=0 
+            where id=${id}::uuid
+          `;
+        } else if (source === "page") {
+          await sql`
+            update public.page_comments 
+            set whitelisted=true, is_hidden=false, reports_count=0 
+            where id=${id}::uuid
+          `;
+        } else {
+          await sql`
+            update public.team_post_comments 
+            set whitelisted=true, is_hidden=false, reports_count=0 
+            where id=${id}::uuid
+          `;
+        }
+      } else {
+        // Если колонки whitelisted нет, просто одобряем
+        if (hasHidden && hasRepCount) {
+          if (source === "manga") {
+            await sql`update public.manga_comments set is_hidden=false, reports_count=0 where id=${id}::uuid`;
+          } else if (source === "page") {
+            await sql`update public.page_comments set is_hidden=false, reports_count=0 where id=${id}::uuid`;
+          } else {
+            await sql`update public.team_post_comments set is_hidden=false, reports_count=0 where id=${id}::uuid`;
+          }
+        }
+      }
+
+      // Закрыть все жалобы
+      if (hasClosedAt) {
+        await sql`
+          update public.comment_reports
+             set status='closed', closed_at=now()
+           where source=${source} and comment_id=${id}::uuid and status='open'
+        `;
+      } else {
+        await sql`
+          update public.comment_reports
+             set status='closed'
+           where source=${source} and comment_id=${id}::uuid and status='open'
+        `;
+      }
+
+      return NextResponse.json({ ok: true, id, source, action });
+    }
 
     /* ---- approve ---- */
     if (action === "approve") {

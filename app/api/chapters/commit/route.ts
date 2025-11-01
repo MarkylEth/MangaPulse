@@ -1,3 +1,4 @@
+//api\chapters\commit\route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { requireUploader } from '@/lib/auth/route-guards';

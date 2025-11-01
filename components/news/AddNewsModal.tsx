@@ -1,9 +1,9 @@
-//components\AddNewsModal.tsx
+// components/AddNewsModal.tsx
 'use client';
 
 import React from 'react';
-import { X, Bold, Italic, Underline, Strikethrough, EyeOff } from 'lucide-react';
-import { newsToHtml } from '@/components/comments/news/formatNews';
+import { X, Bold, Italic, Underline, Strikethrough, EyeOff, Pin } from 'lucide-react';
+import { newsToHtml } from '@/components/news/formatNews';
 
 type Props = {
   isOpen: boolean;
@@ -82,30 +82,72 @@ export default function AddNewsModal({ isOpen, onClose, onCreated, initial }: Pr
   }
 
   const tbtn =
-    'inline-flex items-center justify-center rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 hover:bg-white/10 active:translate-y-px transition';
+    'inline-flex items-center justify-center rounded-md border border-[rgb(var(--border))] ' +
+    'bg-[rgb(var(--muted))]/50 hover:bg-[rgb(var(--muted))] px-2.5 py-1.5 ' +
+    'transition active:translate-y-px focus-visible:outline-none ' +
+    'focus-visible:ring-2 focus-visible:ring-sky-500/40';
 
   return (
-    <div className="fixed inset-0 z-[999] grid place-items-center bg-black/60 backdrop-blur-sm">
-      <div className="w-[min(720px,calc(100vw-32px))] rounded-2xl border border-white/10 bg-[#111] text-white shadow-2xl">
+    <div className="fixed inset-0 z-[90] flex items-center justify-center">
+      {/* backdrop (закрытие по клику отключено) */}
+      <div
+        className="absolute inset-0 bg-black/40 dark:bg-black/70 backdrop-blur-sm"
+        aria-hidden="true"
+      />
+      {/* dialog */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.stopPropagation();
+            e.preventDefault();
+          }
+        }}
+        className="relative z-[95] w-[min(760px,calc(100vw-32px))] rounded-2xl
+                  bg-white/85 dark:bg-[rgb(var(--card))]/85 backdrop-blur-xl
+                  border border-black/10 dark:border-[rgb(var(--border))]
+                  shadow-[0_24px_120px_rgba(0,0,0,.55)]"
+      >
         {/* header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
-          <div className="text-lg font-semibold">Новая новость</div>
-          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-md">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-black/10 dark:border-[rgb(var(--border))]">
+          <div className="flex items-center gap-2">
+            <span className="text-base sm:text-lg font-semibold">Новая новость</span>
+            {pinned && (
+              <span className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-md
+                               bg-[rgb(var(--muted))] text-[rgb(var(--muted-foreground))] border border-[rgb(var(--border))]">
+                <Pin className="w-3 h-3" />
+                Закреплено
+              </span>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-md hover:bg-black/5 dark:hover:bg-white/10 transition
+                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40"
+            aria-label="Закрыть"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* body */}
-        <div className="px-5 pt-4 pb-2 space-y-3">
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Заголовок"
-            className="w-full rounded-lg bg-black/20 border border-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-sky-500/40"
-          />
+        <div className="px-5 pt-4 pb-2 space-y-3 text-[rgb(var(--foreground))]">
+          {/* title */}
+          <label className="block">
+            <span className="sr-only">Заголовок</span>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Заголовок"
+              className="w-full rounded-xl bg-[rgb(var(--muted))]/40 border border-[rgb(var(--border))]
+                         px-3 py-2.5 outline-none transition
+                         focus:ring-2 focus:ring-sky-500/40"
+            />
+          </label>
 
-          {/* ───── toolbar ───── */}
-          <div className="flex items-center gap-2">
+          {/* toolbar + toggles */}
+          <div className="flex flex-wrap items-center gap-2">
             <button className={tbtn} onClick={() => wrapSel('**', '**')} title="Жирный (Ctrl+B)">
               <Bold className="w-4 h-4" />
             </button>
@@ -122,9 +164,30 @@ export default function AddNewsModal({ isOpen, onClose, onCreated, initial }: Pr
               <EyeOff className="w-4 h-4" />
             </button>
 
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-3">
+              {/* pinned toggle — ПИЛЮЛЬНАЯ КНОПКА */}
               <button
-                className="text-sm underline decoration-dotted underline-offset-4 hover:opacity-80"
+                type="button"
+                aria-pressed={pinned}
+                onClick={() => setPinned((v) => !v)}
+                disabled={busy}
+                className={[
+                  "inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition border select-none",
+                  pinned
+                    ? "bg-sky-600 text-white border-sky-600 hover:bg-sky-700"
+                    : "bg-[rgb(var(--muted))] text-[rgb(var(--muted-foreground))] border-[rgb(var(--border))] hover:bg-[rgb(var(--muted))]/80",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40",
+                  "disabled:opacity-60 disabled:cursor-not-allowed",
+                ].join(" ")}
+                title={pinned ? "Открепить" : "Закрепить"}
+              >
+                <Pin className="w-4 h-4" />
+                {pinned ? "Закреплено" : "Закрепить"}
+              </button>
+
+              <button
+                className="text-sm font-medium underline decoration-dotted underline-offset-4
+                           hover:opacity-80 transition"
                 onClick={() => setPreview((v) => !v)}
               >
                 {preview ? 'Скрыть предпросмотр' : 'Предпросмотр'}
@@ -132,35 +195,48 @@ export default function AddNewsModal({ isOpen, onClose, onCreated, initial }: Pr
             </div>
           </div>
 
+          {/* editor / preview */}
           {!preview ? (
-            <textarea
-              ref={taRef}
-              rows={10}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              onKeyDown={onKey}
-              placeholder="Текст новости… Поддерживаются **жирный**, *курсив*, [u]подчёркнутый[/u], ~~зачёркнутый~~ и спойлер ||текст||"
-              className="w-full rounded-lg bg-black/20 border border-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-sky-500/40"
-            />
+            <label className="block">
+              <span className="sr-only">Текст новости</span>
+              <textarea
+                ref={taRef}
+                rows={10}
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                onKeyDown={onKey}
+                className="w-full rounded-xl bg-[rgb(var(--muted))]/40 border border-[rgb(var(--border))]
+                           px-3 py-3 outline-none transition text-[15px] leading-relaxed
+                           focus:ring-2 focus:ring-sky-500/40"
+              />
+            </label>
           ) : (
             <div
-              className="rounded-lg border border-white/10 bg-black/10 p-4 text-[15px] leading-relaxed whitespace-pre-wrap"
+              className="rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--muted))]/30
+                         p-4 text-[15px] leading-relaxed whitespace-pre-wrap"
               dangerouslySetInnerHTML={{ __html: newsToHtml(body) }}
             />
           )}
         </div>
 
         {/* footer */}
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-white/10">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-white/10 hover:bg-white/10">
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-black/10 dark:border-[rgb(var(--border))]">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl border border-[rgb(var(--border))]
+                       bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10
+                       text-sm font-medium transition"
+          >
             Отмена
           </button>
           <button
             onClick={submit}
             disabled={!title.trim() || !body.trim() || busy}
-            className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 disabled:opacity-60"
+            className="px-4 py-2 rounded-xl text-white text-sm font-semibold transition
+                       disabled:opacity-60 disabled:cursor-not-allowed
+                       bg-sky-600 hover:bg-sky-700"
           >
-            Опубликовать
+            {busy ? 'Публикую…' : 'Опубликовать'}
           </button>
         </div>
       </div>

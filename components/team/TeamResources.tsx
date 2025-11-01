@@ -1,3 +1,4 @@
+//components/team/TeamResources.tsx
 'use client'
 
 import { useTheme } from '@/lib/theme/context'

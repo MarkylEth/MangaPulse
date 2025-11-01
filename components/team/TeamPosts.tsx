@@ -1,3 +1,4 @@
+//components/team/TeamPosts.tsx
 'use client'
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'

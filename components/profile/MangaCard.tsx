@@ -199,7 +199,7 @@ function MangaCardRaw({
               className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-rose-400 hover:bg-rose-500/10 transition-colors"
             >
               <div className="w-5 h-5 flex items-center justify-center">
-                <span className="text-lg">🗑️</span>
+                <span className="text-lg"></span>
               </div>
               <span className="flex-1 text-left">Удалить</span>
             </button>

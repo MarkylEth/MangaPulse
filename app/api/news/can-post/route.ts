@@ -1,3 +1,4 @@
+//app/api/news/can-post/route.ts
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/auth/route-guards';
 

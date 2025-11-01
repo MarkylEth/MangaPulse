@@ -9,20 +9,27 @@ export type Manga = {
   translation_status?: string | null;
   age_rating?: string | null;
   release_year?: number | null;
+
   rating?: number | null;
   rating_count?: number | null;
+
   original_title?: string | null;
   title_romaji?: string | null;
   type?: string | null;
   release_formats?: string[] | null;
   tags?: string[] | null;
   genres?: string[] | null;
+
+  // 👇 для счётчика просмотров на странице
+  views?: number | null;
 };
 
 export type Chapter = {
   id: number;
   manga_id: number;
-  chapter_number: number;
+  // В API может прийти как строка, а ты потом делаешь Number(...),
+  // поэтому позволим и string, и number — удобнее для маппинга.
+  chapter_number: number | string;
   title?: string | null;
   created_at: string;
   status?: string | null;
@@ -39,7 +46,12 @@ export type Team = {
   verified?: boolean | null;
 };
 
-export type RatingRow = { id: string; manga_id: number; rating: number; user_id?: string | null };
+export type RatingRow = {
+  id: string;
+  manga_id: number;
+  rating: number;
+  user_id?: string | null;
+};
 
 export type PersonLink = { id: number; name: string; slug?: string | null };
 export type PublisherLink = { id: number; name: string; slug?: string | null };
@@ -50,6 +62,14 @@ export interface MangaTitlePageProps {
   isLoggedIn: boolean;
 }
 
-export type MeInfo = { id: string; username?: string | null; role?: string | null; leaderTeamId?: number | null } | null;
+// роль уточнили, чтобы совпадало с проверками в компоненте
+export type MeInfo =
+  | {
+      id: string;
+      username?: string | null;
+      role?: 'admin' | 'moderator' | 'user' | null;
+      leaderTeamId?: number | null;
+    }
+  | null;
 
 export type ChapterGroup = { vol: number | null; items: Chapter[] };

@@ -104,16 +104,16 @@ export default function ProfileTabs({
                 {active === 'reading' && 'Начните читать'}
                 {active === 'completed' && 'Список пуст'}
                 {active === 'dropped' && 'Всё идёт по плану'}
-                {active === 'favorites' && 'Добавьте избранное'}
                 {active === 'planned' && 'Составьте список'}
+                {active === 'favorites' && 'Добавьте избранное'}
               </h3>
               
               <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
                 {active === 'reading' && 'Тайтлы, которые вы читаете, появятся здесь'}
                 {active === 'completed' && 'Завершённые работы будут отображаться в этом разделе'}
                 {active === 'dropped' && 'Здесь нет брошенных тайтлов — и это хорошо!'}
-                {active === 'favorites' && 'Отметьте сердечком лучшие работы'}
                 {active === 'planned' && 'Добавьте тайтлы, которые планируете прочитать'}
+                {active === 'favorites' && 'Отметьте сердечком лучшие работы'}
               </p>
             </div>
           </div>

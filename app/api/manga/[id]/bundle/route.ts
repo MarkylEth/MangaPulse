@@ -44,6 +44,13 @@ function normalizeManga(row: any) {
     tags: ensureStrArr(row.tags),
     genres: ensureStrArr(row.genres),
     slug: row.slug ?? null,
+    // 👇 Просмотры: сначала берем views, если нет — view_count, иначе 0
+    views:
+      row.views != null
+        ? Number(row.views)
+        : row.view_count != null
+        ? Number(row.view_count)
+        : 0,
   } as any;
 }
 
@@ -79,7 +86,12 @@ function normalizeChapter(row: any) {
     title: row.title ?? null,
     created_at: row.created_at ?? row.published_at ?? row.updated_at ?? new Date().toISOString(),
     status,
-    vol_number: row.vol_number == null ? (row.volume_number == null ? null : Number(row.volume_number)) : Number(row.vol_number),
+    vol_number:
+      row.vol_number == null
+        ? row.volume_number == null
+          ? null
+          : Number(row.volume_number)
+        : Number(row.vol_number),
     uploaded_by: row.uploaded_by ?? null,
     uploader: row.uploaded_by
       ? {
@@ -102,15 +114,17 @@ export async function GET(req: NextRequest, ctx: any) {
     if (!found) {
       const meTmp = await getAuthUser(req).catch(() => null);
       return NextResponse.json(
-        { 
-          ok: true, 
-          item: null, 
-          me: meTmp ? { 
-            id: meTmp.id, 
-            username: meTmp.username ?? null, 
-            role: meTmp.role ?? 'user', 
-            leaderTeamId: null 
-          } : null 
+        {
+          ok: true,
+          item: null,
+          me: meTmp
+            ? {
+                id: meTmp.id,
+                username: meTmp.username ?? null,
+                role: meTmp.role ?? 'user',
+                leaderTeamId: null,
+              }
+            : null,
         },
         { status: 200, headers: { 'Cache-Control': 'private, max-age=30' } }
       );
@@ -118,11 +132,9 @@ export async function GET(req: NextRequest, ctx: any) {
 
     const mangaId = found.id as number;
 
-    // Параллельная загрузка ВСЕХ данных
     const [me, teams, chapters, people, publishers, ratingsData, bookmarkData] = await Promise.all([
       getAuthUser(req).catch(() => null),
-      
-      // Teams
+
       query(
         `select t.id, t.name, t.slug, t.avatar_url, t.verified
          from translator_team_manga tm
@@ -130,30 +142,27 @@ export async function GET(req: NextRequest, ctx: any) {
          where tm.manga_id = $1
          order by t.name asc`,
         [mangaId]
-      ).then(r => r.rows || []).catch(() => []),
-      
-      // Chapters
-// Chapters
-query(
-  `select c.id, c.manga_id, c.chapter_number, c.title, c.created_at, c.published_at, 
-          c.updated_at, c.status, c.review_status, c.vol_number, c.volume_number, 
-          c.uploaded_by, 
-          u.username as uploader_username, 
-          p.avatar_url as uploader_avatar
-   from chapters c
-   left join users u on u.id = c.uploaded_by
-   left join profiles p on p.user_id = c.uploaded_by
-   where c.manga_id = $1
-     and (lower(coalesce(c.review_status,'')) = 'published' 
-          or lower(coalesce(c.status,'')) = 'published')
-   order by c.created_at desc`,
-  [mangaId]
-).then(r => (r.rows || []).map(normalizeChapter)).catch((err) => {
-  console.error('[bundle] Chapters error:', err);
-  return [];
-}),
-      
-      // People (authors & artists)
+      ).then((r) => r.rows || []).catch(() => []),
+
+      query(
+        `select c.id, c.manga_id, c.chapter_number, c.title, c.created_at, c.published_at, 
+                c.updated_at, c.status, c.review_status, c.vol_number, c.volume_number, 
+                c.uploaded_by, 
+                u.username as uploader_username, 
+                p.avatar_url as uploader_avatar
+         from chapters c
+         left join users u on u.id = c.uploaded_by
+         left join profiles p on p.user_id = c.uploaded_by
+         where c.manga_id = $1
+           and (lower(coalesce(c.review_status,'')) = 'published' 
+                or lower(coalesce(c.status,'')) = 'published')
+         order by c.created_at desc`,
+        [mangaId]
+      ).then((r) => (r.rows || []).map(normalizeChapter)).catch((err) => {
+        console.error('[bundle] Chapters error:', err);
+        return [];
+      }),
+
       query(
         `select p.id, p.name, p.slug, mp.role::text as role
          from manga_people mp
@@ -161,7 +170,7 @@ query(
          where mp.manga_id = $1
          order by mp.assigned_at asc, p.name asc`,
         [mangaId]
-      ).then(r => {
+      ).then((r) => {
         const authors: any[] = [];
         const artists: any[] = [];
         for (const row of r.rows || []) {
@@ -171,8 +180,7 @@ query(
         }
         return { authors, artists };
       }).catch(() => ({ authors: [], artists: [] })),
-      
-      // Publishers
+
       query(
         `select pb.id, pb.name, pb.slug
          from manga_publishers mp
@@ -180,13 +188,14 @@ query(
          where mp.manga_id = $1
          order by mp.assigned_at asc, pb.name asc`,
         [mangaId]
-      ).then(r => (r.rows || []).map((row: any) => ({
-        id: Number(row.id),
-        name: row.name,
-        slug: row.slug ?? null,
-      }))).catch(() => []),
-      
-      // Ratings (все данные сразу)
+      ).then((r) =>
+        (r.rows || []).map((row: any) => ({
+          id: Number(row.id),
+          name: row.name,
+          slug: row.slug ?? null,
+        }))
+      ).catch(() => []),
+
       query(
         `select id, manga_id, rating, user_id, created_at, updated_at
          from manga_ratings 
@@ -207,12 +216,10 @@ query(
           ratings_avg: Number(aggRes.rows?.[0]?.avg || 0),
         };
       }).catch(() => ({ ratings: [], ratings_count: 0, ratings_avg: 0 })),
-      
-      // Bookmark (только если юзер залогинен)
+
       (async () => {
         const user = await getAuthUser(req).catch(() => null);
         if (!user?.id) return null;
-        
         const r = await query(
           `select chapter_id, page 
            from reader_bookmarks 
@@ -220,27 +227,25 @@ query(
            limit 1`,
           [user.id, mangaId]
         ).catch(() => ({ rows: [] }));
-        
         return r.rows?.[0] ?? null;
       })(),
     ]);
 
-    // Leader team ID
     let leaderTeamId: number | null = null;
     if (me?.id) {
       try {
         leaderTeamId = await getLeaderTeamIdForTitle(me.id, mangaId);
-      } catch { 
-        leaderTeamId = null; 
+      } catch {
+        leaderTeamId = null;
       }
     }
 
     const meLite = me
-      ? { 
-          id: me.id, 
-          username: me.username ?? null, 
-          role: me.role ?? 'user', 
-          leaderTeamId 
+      ? {
+          id: me.id,
+          username: me.username ?? null,
+          role: me.role ?? 'user',
+          leaderTeamId,
         }
       : null;
 
@@ -262,18 +267,18 @@ query(
         bookmark: bookmarkData,
         me: meLite,
       },
-      { 
-        status: 200, 
-        headers: { 
+      {
+        status: 200,
+        headers: {
           'Cache-Control': 'private, max-age=60',
-          'X-Content-Type-Options': 'nosniff'
-        } 
+          'X-Content-Type-Options': 'nosniff',
+        },
       }
     );
   } catch (e: any) {
     console.error('[bundle] Error:', e);
     return NextResponse.json(
-      { ok: false, error: e?.message ?? 'Internal error' }, 
+      { ok: false, error: e?.message ?? 'Internal error' },
       { status: 500 }
     );
   }

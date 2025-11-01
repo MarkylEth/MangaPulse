@@ -192,26 +192,40 @@ export async function GET(req: NextRequest, ctx: any) {
     const rootsForChildren = isFirstPage ? [...pinnedRoots, ...pageRoots] : pageRoots;
 
     let children: ReturnType<typeof mapRow>[] = [];
-    if (rootsForChildren.length > 0) {
-      const childrenQ = await query<any>(
-        `
-        select
-          c.*,
-          u.username  as _profile_username,
-          p.avatar_url as _profile_avatar,
-          coalesce((select sum(v.value)::int from comment_votes v where v.comment_id = c.id), 0) as _score,
-          coalesce((select v2.value::int from comment_votes v2 where v2.comment_id = c.id and v2.user_id = $3::uuid limit 1), 0) as _my_vote
-        from public.manga_comments c
-        left join public.users    u on u.id      = c.user_id
-        left join public.profiles p on p.user_id = c.user_id
-        where c.manga_id = $1
-          and c.parent_id = any($2::uuid[])
-        order by c.created_at desc, c.id desc
-        `,
-        [mangaId, rootsForChildren.map(r => r.id), myId]
-      );
-      children = (childrenQ.rows || []).map(mapRow);
-    }
+if (rootsForChildren.length > 0) {
+  const childrenQ = await query<any>(
+    `
+    with recursive roots as (
+      select unnest($2::uuid[]) as id
+    ),
+    tree as (
+      -- прямые дети корней
+      select c.*
+      from public.manga_comments c
+      join roots r on c.parent_id = r.id
+      where c.manga_id = $1
+      union all
+      -- все потомки
+      select c2.*
+      from public.manga_comments c2
+      join tree t on c2.parent_id = t.id
+      where c2.manga_id = $1
+    )
+    select
+      t.*,
+      u.username  as _profile_username,
+      p.avatar_url as _profile_avatar,
+      coalesce((select sum(v.value)::int from comment_votes v where v.comment_id = t.id), 0) as _score,
+      coalesce((select v2.value::int from comment_votes v2 where v2.comment_id = t.id and v2.user_id = $3::uuid limit 1), 0) as _my_vote
+    from tree t
+    left join public.users    u on u.id      = t.user_id
+    left join public.profiles p on p.user_id = t.user_id
+    order by t.created_at desc, t.id desc
+    `,
+    [mangaId, rootsForChildren.map(r => r.id), myId]
+  );
+  children = (childrenQ.rows || []).map(mapRow);
+}
 
     const items = isFirstPage
       ? [...pinnedRoots, ...pageRoots, ...children]

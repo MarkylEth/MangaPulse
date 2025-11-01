@@ -43,6 +43,7 @@ export default function ChapterReader(props: ChapterReaderProps) {
     };
   }, []);
 
+  // === ЗАГРУЗКА ===
   if (loading) {
     return (
       <div className="relative max-w-[1400px] mx-auto px-6 py-12">
@@ -63,6 +64,7 @@ export default function ChapterReader(props: ChapterReaderProps) {
     );
   }
 
+  // === ОШИБКА ===
   if (error) {
     return (
       <div className="relative max-w-[1400px] mx-auto px-6 py-12">
@@ -73,6 +75,7 @@ export default function ChapterReader(props: ChapterReaderProps) {
     );
   }
 
+  // === ПУСТО ===
   if (!pages.length) {
     return (
       <div className="relative max-w-[1400px] mx-auto px-6 py-12">

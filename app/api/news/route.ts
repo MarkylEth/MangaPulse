@@ -1,3 +1,4 @@
+// app/api/news/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
 import { requireUser } from '@/lib/auth/route-guards';
@@ -14,27 +15,13 @@ type Row = {
   author_id: string;
   author_name: string | null;
   author_avatar: string | null;
+  author_role: 'admin' | 'moderator' | null;
+  comment_count: number;
 };
 
 function isStaff(u: any): boolean {
-  const role = String(u?.role ?? u?.user?.role ?? '').toLowerCase();
-  const roles: string[] = Array.isArray(u?.roles ?? u?.user?.roles)
-    ? (u?.roles ?? u?.user?.roles).map((x: any) => String(x).toLowerCase())
-    : [];
-  const flags = {
-    admin: Boolean(u?.is_admin ?? u?.user?.is_admin),
-    moderator: Boolean(u?.is_moderator ?? u?.user?.is_moderator),
-    staff: Boolean(u?.is_staff ?? u?.user?.is_staff),
-  };
-  return (
-    flags.admin ||
-    flags.moderator ||
-    flags.staff ||
-    role === 'admin' ||
-    role === 'moderator' ||
-    roles.includes('admin') ||
-    roles.includes('moderator')
-  );
+  const role = String(u?.role ?? '').toLowerCase();
+  return role === 'admin' || role === 'moderator';
 }
 
 export async function GET(req: NextRequest) {
@@ -42,11 +29,13 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const limit = Math.min(50, Number(searchParams.get('limit') ?? '12')) || 12;
 
-    const rows = await sql<Row>`
+    const rows = await sql`
       select
         n.id, n.title, n.body, n.pinned, n.visible, n.created_at, n.author_id,
         coalesce(p.display_name, u.username) as author_name,
-        p.avatar_url as author_avatar
+        p.avatar_url as author_avatar,
+        p.role as author_role,
+        (select count(*)::int from news_comments nc where nc.news_id = n.id) as comment_count
       from news n
       left join users u on u.id = n.author_id
       left join profiles p on p.user_id = n.author_id
@@ -54,7 +43,8 @@ export async function GET(req: NextRequest) {
       order by n.pinned desc, n.created_at desc
       limit ${limit}
     `;
-    return NextResponse.json({ data: rows }, { status: 200 });
+    
+    return NextResponse.json({ data: rows as Row[] }, { status: 200 });
   } catch (e) {
     console.error('GET /api/news error', e);
     return NextResponse.json({ error: 'server_error' }, { status: 500 });
@@ -63,7 +53,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const u: any = await requireUser();
+    const u = await requireUser();
     if (!isStaff(u)) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
     const json = await req.json().catch(() => ({}));
@@ -75,15 +65,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'validation' }, { status: 400 });
     }
 
-    const authorId = String(u?.id ?? u?.user?.id ?? '');
+    const authorId = u.id;
     if (!authorId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
-    const rows = await sql<{ id: number }>`
+    const rows = await sql`
       insert into news (title, body, pinned, visible, author_id)
       values (${title}, ${body}, ${pinned}, true, ${authorId})
       returning id
     `;
-    return NextResponse.json({ ok: true, data: { id: rows?.[0]?.id ?? null } }, { status: 201 });
+    
+    const insertedId = (rows[0] as { id: number } | undefined)?.id ?? null;
+    return NextResponse.json({ ok: true, data: { id: insertedId } }, { status: 201 });
   } catch (e) {
     console.error('POST /api/news error', e);
     return NextResponse.json({ error: 'server_error' }, { status: 500 });

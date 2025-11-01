@@ -36,7 +36,7 @@ export default function ChaptersPanel({
         {groups.map((group) => (
           <div key={`vol-${group.vol ?? 'none'}`}>
             <div className="text-muted-foreground text-sm mb-2 px-4">
-              {group.vol != null ? `Том ${group.vol}` : 'Без тома'} ({group.items.length})
+              {group.vol != null ? `Том ${group.vol}` : 'Без тома'} 
             </div>
 
             {group.items.map((ch) => {

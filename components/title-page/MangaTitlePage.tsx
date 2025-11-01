@@ -1,21 +1,18 @@
-// components/title-page/MangaTitlePage.tsx
 'use client';
 
 import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Header } from '@/components/Header';
 import TitleBookmarks from '@/components/TitleBookmarks';
 import RelatedTitlesRow from '@/components/RelatedTitlesRow';
 import CommentSection from '@/components/comments/CommentSection';
 import { romajiSlug, makeIdSlug } from '@/lib/slug';
-import { MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal, Eye } from 'lucide-react';
 
-import { useMangaBundle } from '../../hooks/MangaHooks';
 import { safeJson } from 'lib/utils';
 import type {
-  MangaTitlePageProps,
   Chapter,
   ChapterGroup,
   Manga,
@@ -56,7 +53,6 @@ interface Props {
 
 export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Props) {
   const router = useRouter();
-  const pathname = usePathname();
 
   const hasInitialData = !!initialData;
 
@@ -68,7 +64,7 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
       id: `local-${i}`,
       manga_id: mangaId,
       genre: name,
-    }));
+    })) as unknown as Genre[];
   });
   const [tags, setTags] = React.useState<string[]>(initialData?.tags ?? []);
   const [ratings, setRatings] = React.useState<RatingRow[]>(initialData?.ratings ?? []);
@@ -86,7 +82,8 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
   const logged = typeof isLoggedIn === 'boolean' ? isLoggedIn : !!me;
   const isGuest = !logged;
 
-  const [tab, setTab] = React.useState<'description' | 'chapters' | 'comments' | 'team' | 'similar'>('description');
+  const [tab, setTab] =
+    React.useState<'description' | 'chapters' | 'comments' | 'team' | 'similar'>('description');
   const [rateOpen, setRateOpen] = React.useState(false);
   const [rateValue, setRateValue] = React.useState<number | null>(null);
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -125,12 +122,120 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
   const slugCandidate = romajiSlug(rawTitle);
   const slugId = slugCandidate ? makeIdSlug(mid, slugCandidate) : String(mid);
 
-  /* ============ keep pretty slug in URL ============ */
+  /* ============ PRETTY URL без навигации ============ */
   React.useEffect(() => {
     if (!manga) return;
+    // Меняем строку браузера, но НЕ инициируем клиентскую навигацию Next
     const want = `/title/${slugId}`;
-    if (pathname !== want) router.replace(want, { scroll: false });
-  }, [manga, slugId, pathname, router]);
+    if (typeof window !== 'undefined' && window.location.pathname !== want) {
+      const url = new URL(window.location.href);
+      url.pathname = want;
+      window.history.replaceState(null, '', url.toString());
+    }
+  }, [manga, slugId]);
+
+  /* ============ increment view count (robust) ============ */
+  const viewFiredRef = React.useRef<Set<number>>(new Set());
+
+  React.useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let aborted = false;
+
+    const storageKey = `viewed:${mid}`;
+    if (typeof window !== 'undefined' && sessionStorage.getItem(storageKey)) {
+      return; // уже засчитано в этой вкладке
+    }
+
+    const isLikelyBot = () => {
+      const ua = navigator.userAgent.toLowerCase();
+      return /bot|crawl|spider|headless|lighthouse/.test(ua);
+    };
+
+    const incrementView = async () => {
+      if (aborted || isLikelyBot()) return;
+
+      try {
+        const url = `/api/manga/${mid}/view`;
+
+        // 1) Пытаемся отправить без блокировки навигации
+        let usedBeacon = false;
+        if ('sendBeacon' in navigator) {
+          try {
+            usedBeacon = navigator.sendBeacon(url, new Blob([]));
+          } catch {
+            usedBeacon = false;
+          }
+        }
+
+        let data: any = null;
+
+        if (usedBeacon) {
+          // Ответ у beacon не прочитать — дешёвый GET сразу после
+          const r = await fetch(url, { method: 'GET', credentials: 'include', cache: 'no-store' });
+          data = await r.json().catch(() => ({ ok: false }));
+        } else {
+          // 2) Обычный POST (keepalive — чтобы доехал при уходе со страницы)
+          const response = await fetch(url, {
+            method: 'POST',
+            credentials: 'include',
+            keepalive: true,
+          });
+          data = await response.json().catch(() => ({ ok: false }));
+        }
+
+        if (aborted) return;
+
+        if (data?.ok) {
+          sessionStorage.setItem(storageKey, '1');
+          setManga((prev) => {
+            if (!prev) return prev;
+            const nextViews =
+              typeof data.views === 'number'
+                ? data.views
+                : prev.views ?? 0;
+            return { ...prev, views: nextViews };
+          });
+        } else {
+          // на крайний случай подберём views ещё одним GET
+          try {
+            const r = await fetch(url, { method: 'GET', credentials: 'include', cache: 'no-store' });
+            const j = await r.json().catch(() => null);
+            if (j?.ok && typeof j.views === 'number') {
+              sessionStorage.setItem(storageKey, '1');
+              setManga((prev) => (prev ? { ...prev, views: j.views } : prev));
+            }
+          } catch {}
+        }
+      } catch (error) {
+        console.error('[incrementView] Error:', error);
+      }
+    };
+
+    const scheduleIncrement = () => {
+      timer = setTimeout(incrementView, 1000);
+    };
+
+    if (viewFiredRef.current.has(mangaId)) return;
+    viewFiredRef.current.add(mangaId);
+
+    if (document.visibilityState !== 'visible') {
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+          if (!aborted) scheduleIncrement();
+        }
+      };
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    } else {
+      scheduleIncrement();
+    }
+
+    return () => {
+      aborted = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [mangaId, mid]);
 
   /* ============ client-side load when no initialData ============ */
   React.useEffect(() => {
@@ -149,7 +254,7 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
         const j = await safeJson<any>(r);
         if (stop) return;
 
-        setManga(j?.manga ?? null);
+        setManga(j?.manga ?? j?.item ?? null);
 
         const list = Array.isArray(j?.chapters) ? j.chapters : [];
         setChapters(
@@ -166,7 +271,7 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
             id: `local-${i}`,
             manga_id: mangaId,
             genre: name,
-          }))
+          })) as unknown as Genre[]
         );
 
         setTags(Array.isArray(j?.tags) ? j.tags : []);
@@ -246,23 +351,43 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
     }
   }, [mid]);
 
-  if (loading)
+  const formatViews = React.useCallback((views: number): string => {
+    const format = (n: number) => {
+      const str = n.toFixed(1);
+      return str.endsWith('.0') ? str.slice(0, -2) : str;
+    };
+
+    if (views >= 1_000_000) {
+      return `${format(views / 1_000_000)}M`;
+    }
+    if (views >= 1_000) {
+      return `${format(views / 1_000)}K`;
+    }
+    return String(views);
+  }, []);
+
+  if (loading) {
     return (
       <div className="min-h-screen bg-background text-foreground">
         <Header showSearch={false} />
-        <div className="flex items-center justify-center h-[60vh] text-sm text-muted-foreground">Загрузка…</div>
+        <div className="flex items-center justify-center h-[60vh] text-sm text-muted-foreground">
+          Загрузка…
+        </div>
       </div>
     );
+  }
 
-  if (!manga)
+  if (!manga) {
     return (
       <div className="min-h-screen bg-background text-foreground">
         <Header showSearch={false} />
         <div className="p-6 text-sm text-muted-foreground">Тайтл не найден.</div>
       </div>
     );
+  }
 
   const rawDesc = (manga?.description ?? '').trim();
+  const viewsCount = Number(manga?.views ?? 0);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -270,64 +395,111 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
 
       <div className="mx-auto max-w-[1400px] px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr_320px] gap-8">
-          {/* LEFT */}
+          {/* LEFT COLUMN */}
           <div className="flex flex-col gap-4">
             <div className="relative rounded-2xl overflow-hidden w-full aspect-[2/3] border border-border/50 bg-card">
-              <Image src={manga.cover_url || '/cover-placeholder.png'} alt={manga.title} fill priority className="object-cover" />
+              <Image
+                src={manga.cover_url || '/cover-placeholder.png'}
+                alt={manga.title}
+                fill
+                priority
+                className="object-cover"
+              />
             </div>
             <div className="hidden lg:block">
               <TitleBookmarks mangaId={mid} loggedIn={logged} />
             </div>
           </div>
 
-          {/* CENTER */}
+          {/* CENTER COLUMN */}
           <div className="flex flex-col gap-4">
             <div>
               <h1 className="text-4xl font-bold mb-1">{manga.title}</h1>
               {(manga.original_title || manga.title_romaji) && (
-                <p className="text-muted-foreground text-base">{manga.original_title || manga.title_romaji}</p>
+                <p className="text-muted-foreground text-base">
+                  {manga.original_title || manga.title_romaji}
+                </p>
               )}
             </div>
 
-            <div className="flex items-center gap-4 text-sm">
-              <StarRating5Static value={ratingAverage} />
-              <span className="text-muted-foreground">{ratingAverage.toFixed(1)} ({ratingCount})</span>
+            <div className="flex items-center gap-4 text-sm flex-wrap">
+              <div className="flex items-center gap-4">
+                <StarRating5Static value={ratingAverage} />
+                <span className="text-muted-foreground">
+                  {ratingAverage.toFixed(1)} ({ratingCount})
+                </span>
+              </div>
+
+              {viewsCount > 0 && (
+                <div
+                  className="flex items-center gap-1.5 text-muted-foreground"
+                  title={`${viewsCount.toLocaleString('ru-RU')} просмотров`}
+                >
+                  <Eye className="w-4 h-4" />
+                  <span>{formatViews(viewsCount)}</span>
+                </div>
+              )}
 
               {isGuest ? (
-                <span className="ml-2 px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs opacity-70 cursor-not-allowed select-none" aria-disabled="true">
+                <span
+                  className="ml-2 px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs opacity-70 cursor-not-allowed select-none"
+                  aria-disabled="true"
+                  title="Войдите, чтобы оценить тайтл"
+                >
                   Оценить
                 </span>
               ) : (
                 <button
-                  onClick={() => { setRateOpen(true); setRateValue(Math.round(ratingAverage) || 7); }}
+                  onClick={() => {
+                    setRateOpen(true);
+                    setRateValue(Math.round(ratingAverage) || 7);
+                  }}
                   className="ml-2 px-3 py-1.5 rounded-lg bg-muted hover:opacity-90 text-xs transition-colors border border-border"
+                  aria-label="Оценить тайтл"
                 >
                   Оценить
                 </button>
               )}
 
               <div className="relative ml-auto" ref={menuRef}>
-                <button className="px-3 py-2 bg-muted rounded-lg transition-colors border border-border hover:opacity-90" onClick={() => setMenuOpen((v) => !v)}>
+                <button
+                  className="px-3 py-2 bg-muted rounded-lg transition-colors border border-border hover:opacity-90"
+                  onClick={() => setMenuOpen((v) => !v)}
+                  aria-label="Дополнительные действия"
+                  aria-expanded={menuOpen}
+                >
                   <MoreHorizontal className="w-5 h-5" />
                 </button>
 
                 {menuOpen && (
                   <div className="absolute right-full mr-3 top-1/2 -translate-y-[63px] w-56 rounded-lg border border-border bg-card shadow-lg z-20 overflow-hidden">
                     {isGuest ? (
-                      <div aria-disabled="true" className="block h-10 px-3 flex items-center text-sm text-muted-foreground opacity-70 cursor-not-allowed">
+                      <div
+                        aria-disabled="true"
+                        className="block h-10 px-3 flex items-center text-sm text-muted-foreground opacity-70 cursor-not-allowed"
+                      >
                         Сообщить об ошибке
                       </div>
                     ) : (
-                      <Link href={`/title/${mid}/error`} className="block h-10 px-3 flex items-center text-sm hover:bg-muted transition">
+                      <Link
+                        href={`/title/${mid}/error`}
+                        className="block h-10 px-3 flex items-center text-sm hover:bg-muted transition"
+                      >
                         Сообщить об ошибке
                       </Link>
                     )}
                     {isGuest ? (
-                      <div aria-disabled="true" className="block h-10 px-3 flex items-center text-sm text-muted-foreground opacity-70 cursor-not-allowed">
+                      <div
+                        aria-disabled="true"
+                        className="block h-10 px-3 flex items-center text-sm text-muted-foreground opacity-70 cursor-not-allowed"
+                      >
                         Редактировать тайтл
                       </div>
                     ) : (
-                      <Link href={`/title/${mid}/edit`} className="block h-10 px-3 flex items-center text-sm hover:bg-muted transition">
+                      <Link
+                        href={`/title/${mid}/edit`}
+                        className="block h-10 px-3 flex items-center text-sm hover:bg-muted transition"
+                      >
                         Редактировать тайтл
                       </Link>
                     )}
@@ -341,9 +513,32 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
                 <button
                   key={k}
                   onClick={() => setTab(k)}
-                  className={`pb-3 px-1 border-b-2 transition-colors ${tab === k ? 'border-accent text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+                  className={`pb-3 px-1 border-b-2 transition-colors ${
+                    tab === k
+                      ? 'border-accent text-foreground'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                  aria-label={
+                    k === 'description'
+                      ? 'О тайтле'
+                      : k === 'chapters'
+                      ? 'Главы'
+                      : k === 'comments'
+                      ? 'Комментарии'
+                      : k === 'team'
+                      ? 'Команда'
+                      : 'Связанное'
+                  }
                 >
-                  {k === 'description' ? 'О тайтле' : k === 'chapters' ? 'Главы' : k === 'comments' ? 'Комментарии' : k === 'team' ? 'Команда' : 'Связанное'}
+                  {k === 'description'
+                    ? 'О тайтле'
+                    : k === 'chapters'
+                    ? 'Главы'
+                    : k === 'comments'
+                    ? 'Комментарии'
+                    : k === 'team'
+                    ? 'Команда'
+                    : 'Связанное'}
                 </button>
               ))}
             </div>
@@ -374,33 +569,46 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
                 />
               )}
 
-              {/* ====== КОММЕНТАРИИ ====== */}
-              <div className={tab === 'comments' ? 'block' : 'hidden'}>
-                <CommentSection
-                  mangaId={mid}
-                  me={me ? { id: me.id, role: me.role ?? null } : null}
-                  canEdit={canEdit}
-                  leaderTeamId={me?.leaderTeamId ?? null}
-                  /* initialItems можно пробросить, если вернёте их из SSR bundle:
-                     initialItems={initialData?.comments} */
-                />
-              </div>
+              {tab === 'comments' && (
+                <div className="block">
+                  <CommentSection
+                    mangaId={mid}
+                    me={me ? { id: me.id, role: me.role ?? null } : null}
+                    canEdit={canEdit}
+                    leaderTeamId={me?.leaderTeamId ?? null}
+                  />
+                </div>
+              )}
 
               {tab === 'team' && (
                 <div className="text-foreground/90">
                   <div className="space-y-4">
-                    {teams.length === 0 && <p className="text-muted-foreground">Команды не привязаны</p>}
+                    {teams.length === 0 && (
+                      <p className="text-muted-foreground">Команды не привязаны</p>
+                    )}
                     {teams.map((t) => (
-                      <Link key={t.id} href={`/team/${t.slug ?? String(t.id)}`} className="block p-4 bg-card hover:bg-card/90 border border-border rounded-lg transition-colors">
+                      <Link
+                        key={t.id}
+                        href={`/team/${t.slug ?? String(t.id)}`}
+                        className="block p-4 bg-card hover:bg-card/90 border border-border rounded-lg transition-colors"
+                      >
                         <div className="flex items-center gap-3">
                           {t.avatar_url ? (
-                            <img src={t.avatar_url} alt={t.name} className="w-12 h-12 rounded-full" />
+                            <img
+                              src={t.avatar_url}
+                              alt={t.name}
+                              className="w-12 h-12 rounded-full object-cover"
+                            />
                           ) : (
-                            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-foreground">{t.name[0]}</div>
+                            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-foreground font-semibold">
+                              {t.name[0]?.toUpperCase()}
+                            </div>
                           )}
                           <div>
                             <div className="font-medium">{t.name}</div>
-                            <div className="text-sm text-muted-foreground">Команда переводчиков</div>
+                            <div className="text-sm text-muted-foreground">
+                              Команда переводчиков
+                            </div>
                           </div>
                         </div>
                       </Link>
@@ -417,9 +625,14 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
             </div>
           </div>
 
-          {/* RIGHT */}
+          {/* RIGHT COLUMN */}
           <div className="flex flex-col gap-4">
-            <SidebarProgress bookmark={bookmark} chapters={chapters} slugId={slugId} firstChapterId={firstChapterId} />
+            <SidebarProgress
+              bookmark={bookmark}
+              chapters={chapters}
+              slugId={slugId}
+              firstChapterId={firstChapterId}
+            />
 
             <div className="rounded-xl p-4 bg-card border border-border">
               <h3 className="text-sm font-medium mb-3">Обновления</h3>
@@ -427,7 +640,9 @@ export default function MangaTitlePage({ mangaId, initialData, isLoggedIn }: Pro
                 {chapters.slice(0, 3).map((ch) => (
                   <div key={ch.id} className="flex justify-between items-center">
                     <span className="text-foreground/90">Глава {ch.chapter_number}</span>
-                    <span className="text-muted-foreground text-xs">{new Date(ch.created_at).toLocaleDateString('ru-RU')}</span>
+                    <span className="text-muted-foreground text-xs">
+                      {new Date(ch.created_at).toLocaleDateString('ru-RU')}
+                    </span>
                   </div>
                 ))}
                 {firstChapterId && !bookmark && (

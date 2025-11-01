@@ -12,6 +12,114 @@
 +-- tree_filtered_ascii.txt
 +-- tsconfig.json
 +-- vercel.json
++-- .bot-profile
+|   +-- AmountExtractionHeuristicRegexes
+|   +-- AutofillStates
+|   +-- BrowserMetrics
+|   +-- CertificateRevocation
+|   |   \-- 10125
+|   |       +-- manifest.json
+|   |       \-- _metadata
+|   |           +-- verified_contents.json
+|   +-- component_crx_cache
+|   |   +-- metadata.json
+|   +-- CookieReadinessList
+|   +-- Crashpad
+|   |   +-- attachments
+|   |   \-- reports
+|   +-- Crowd Deny
+|   +-- Default
+|   |   +-- AutofillAiModelCache
+|   |   +-- AutofillStrikeDatabase
+|   |   +-- blob_storage
+|   |   |   \-- b3c92e20-863d-4a63-9dab-f69d56d102c7
+|   |   +-- BudgetDatabase
+|   |   +-- Cache
+|   |   |   +-- Cache_Data
+|   |   |   \-- No_Vary_Search
+|   |   +-- chrome_cart_db
+|   |   +-- ClientCertificates
+|   |   +-- Code Cache
+|   |   |   +-- js
+|   |   |   |   \-- index-dir
+|   |   |   \-- wasm
+|   |   |       \-- index-dir
+|   |   +-- Collaboration
+|   |   +-- commerce_subscription_db
+|   |   +-- DataSharing
+|   |   +-- DawnGraphiteCache
+|   |   +-- DawnWebGPUCache
+|   |   +-- discount_infos_db
+|   |   +-- discounts_db
+|   |   +-- Extension Rules
+|   |   +-- Extension Scripts
+|   |   +-- Extension State
+|   |   +-- Feature Engagement Tracker
+|   |   |   +-- AvailabilityDB
+|   |   |   \-- EventDB
+|   |   +-- GCM Store
+|   |   +-- GPUCache
+|   |   +-- Local Storage
+|   |   |   \-- leveldb
+|   |   +-- Network
+|   |   +-- parcel_tracking_db
+|   |   +-- PersistentOriginTrials
+|   |   +-- power_bookmarks
+|   |   +-- Safe Browsing Network
+|   |   +-- Segmentation Platform
+|   |   |   +-- SegmentInfoDB
+|   |   |   +-- SignalDB
+|   |   |   \-- SignalStorageConfigDB
+|   |   +-- Session Storage
+|   |   +-- Sessions
+|   |   +-- Shared Dictionary
+|   |   |   \-- cache
+|   |   |       \-- index-dir
+|   |   +-- shared_proto_db
+|   |   |   \-- metadata
+|   |   +-- Site Characteristics Database
+|   |   +-- Sync Data
+|   |   |   \-- LevelDB
+|   |   \-- WebStorage
+|   +-- extensions_crx_cache
+|   |   +-- metadata.json
+|   +-- FileTypePolicies
+|   +-- Fingerprinting Protection Filter
+|   |   \-- Unindexed Rules
+|   +-- FirstPartySetsPreloaded
+|   +-- GraphiteDawnCache
+|   +-- GrShaderCache
+|   +-- HistorySearch
+|   +-- hyphen-data
+|   +-- MaskedDomainListPreloaded
+|   +-- MEIPreload
+|   +-- OnDeviceHeadSuggestModel
+|   +-- OpenCookieDatabase
+|   +-- OriginTrials
+|   +-- PKIMetadata
+|   +-- PlusAddressBlocklist
+|   +-- PrivacySandboxAttestationsPreloaded
+|   +-- ProbabilisticRevealTokenRegistry
+|   +-- Safe Browsing
+|   +-- SafetyTips
+|   +-- segmentation_platform
+|   +-- ShaderCache
+|   +-- SSLErrorAssistant
+|   +-- Subresource Filter
+|   |   +-- Indexed Rules
+|   |   |   \-- 37
+|   |   |       \-- 9.62.0
+|   |   \-- Unindexed Rules
+|   |       \-- 9.62.0
+|   |           +-- LICENSE.txt
+|   |           +-- manifest.json
+|   |           \-- _metadata
+|   |               +-- verified_contents.json
+|   +-- TpcdMetadata
+|   +-- TrustTokenKeyCommitments
+|   +-- WasmTtsEngine
+|   +-- WidevineCdm
+|   \-- ZxcvbnData
 +-- app
 |   +-- globals.css
 |   +-- layout.tsx
@@ -36,6 +144,9 @@
 |   |   |   |   \-- stats
 |   |   |   |       +-- route.ts
 |   |   |   +-- chapters
+|   |   |   |   +-- [id]
+|   |   |   |   |   \-- staging-list
+|   |   |   |   |       +-- route.ts
 |   |   |   |   +-- pending
 |   |   |   |   |   +-- route.ts
 |   |   |   |   +-- publish
@@ -222,10 +333,12 @@
 |   |   |   |   |   +-- route.ts
 |   |   |   |   +-- tags
 |   |   |   |   |   +-- route.ts
-|   |   |   |   \-- teams
+|   |   |   |   +-- teams
+|   |   |   |   |   +-- route.ts
+|   |   |   |   |   \-- [teamId]
+|   |   |   |   |       +-- route.ts
+|   |   |   |   \-- view
 |   |   |   |       +-- route.ts
-|   |   |   |       \-- [teamId]
-|   |   |   |           +-- route.ts
 |   |   |   +-- approve
 |   |   |   |   +-- route.ts
 |   |   |   +-- list
@@ -245,6 +358,10 @@
 |   |   |   |   +-- route.ts
 |   |   |   +-- comments
 |   |   |   |   +-- route.ts
+|   |   |   |   +-- reports
+|   |   |   |   |   +-- route.ts
+|   |   |   |   \-- whitelist
+|   |   |   |       +-- route.ts
 |   |   |   \-- rules
 |   |   |       +-- route.ts
 |   |   |       \-- list
@@ -412,6 +529,7 @@
 |   |   \-- [chatId]
 |   |       +-- page.tsx
 |   +-- news
+|   |   +-- page.tsx
 |   |   \-- [id]
 |   |       +-- page.tsx
 |   +-- profile
@@ -441,6 +559,7 @@
 |                           \-- p
 |                               \-- [p]
 |                                   +-- page.tsx
++-- bot
 +-- components
 |   +-- AddChapterButton.tsx
 |   +-- AddRelatedButton.tsx
@@ -485,8 +604,6 @@
 |   |   +-- CommentList.tsx
 |   |   +-- CommentSection.tsx
 |   |   +-- ReportForm.tsx
-|   |   \-- news
-|   |       +-- formatNews.tsx
 |   +-- feed
 |   |   +-- CompactFeedRow.tsx
 |   +-- home
@@ -505,6 +622,11 @@
 |   +-- news
 |   |   +-- AddNewsModal.tsx
 |   |   +-- CreateNewsEntry.tsx
+|   |   +-- formatNews.tsx
+|   |   +-- NewsCommentEditor.tsx
+|   |   +-- NewsList.tsx
+|   |   +-- NewsView.tsx
+|   |   +-- parts.tsx
 |   |   +-- TeamNewsRow.tsx
 |   +-- profile
 |   |   +-- EditProfileModal.tsx
@@ -632,6 +754,7 @@
 |   +-- reader
 |   |   +-- settings.ts
 |   |   +-- types.ts
+|   |   +-- useChapterBundle.ts
 |   |   +-- useChapterData.ts
 |   |   +-- useChapterNavigation.ts
 |   |   +-- useReaderAuth.ts

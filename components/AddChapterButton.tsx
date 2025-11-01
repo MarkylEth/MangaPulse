@@ -252,7 +252,7 @@ function Uploader({ mangaId, onClose, onDone }: {
           return;
         }
         const data = await res.json();
-        
+
         // Определяем массив команд из разных возможных структур ответа
         let rawTeams: any[] = [];
         if (Array.isArray(data)) {
@@ -262,12 +262,12 @@ function Uploader({ mangaId, onClose, onDone }: {
         } else if (Array.isArray(data?.items)) {
           rawTeams = data.items;
         }
-        
+
         const teams = rawTeams.map((t: any) => ({
           id: Number(t.id ?? t.team_id ?? 0),
-          name: String(t.name ?? t.team_name ?? 'Без названия')
+          name: String(t.name ?? t.team_name ?? 'Без названия'),
         }));
-        
+
         setAvailableTeams(teams);
       } catch (err) {
         console.error('Ошибка загрузки команд:', err);
@@ -289,44 +289,77 @@ function Uploader({ mangaId, onClose, onDone }: {
     const list = Array.from(fs || []).filter(f => f.type.startsWith('image/'));
     if (!list.length) return;
     const items: PageItem[] = list.map(file => ({
-      id: makeId(), file, url: URL.createObjectURL(file), name: file.name, size: file.size
+      id: makeId(),
+      file,
+      url: URL.createObjectURL(file),
+      name: file.name,
+      size: file.size,
     }));
     setPages(prev => [...prev, ...items]);
   }
   function onSelectInput(e: React.ChangeEvent<HTMLInputElement>) {
-    const fs = e.target.files; if (!fs?.length) return; addFiles(fs); e.currentTarget.value = '';
+    const fs = e.target.files;
+    if (!fs?.length) return;
+    addFiles(fs);
+    e.currentTarget.value = '';
   }
   function onDropFiles(e: React.DragEvent<HTMLDivElement>) {
-    e.preventDefault(); if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files);
+    e.preventDefault();
+    if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files);
   }
   const prevent = (e: React.DragEvent) => e.preventDefault();
 
   const [nameAsc, setNameAsc] = useState(true);
   const [numAsc, setNumAsc] = useState(true);
   function sortByName() {
-    setPages(prev => [...prev].sort((a,b)=> (nameAsc?1:-1)*collator.compare(a.name,b.name)));
-    setNameAsc(v=>!v);
+    setPages(prev =>
+      [...prev].sort((a, b) => (nameAsc ? 1 : -1) * collator.compare(a.name, b.name))
+    );
+    setNameAsc(v => !v);
   }
-  function sortByNumbers(){
-    setPages(prev => [...prev].sort((a,b)=> (numAsc?1:-1)*cmpByNums(a.name,b.name)));
-    setNumAsc(v=>!v);
-  }
-
-  function moveToStart(i:number){
-    setPages(prev=>{ const next=[...prev]; const [it]=next.splice(i,1); next.unshift(it); return next; });
-  }
-  function moveToEnd(i:number){
-    setPages(prev=>{ const next=[...prev]; const [it]=next.splice(i,1); next.push(it); return next; });
+  function sortByNumbers() {
+    setPages(prev =>
+      [...prev].sort((a, b) => (numAsc ? 1 : -1) * cmpByNums(a.name, b.name))
+    );
+    setNumAsc(v => !v);
   }
 
-  function removeAt(i:number){
-    setPages(prev=>{ const next=[...prev]; const [it]=next.splice(i,1); URL.revokeObjectURL(it.url); return next; });
+  function moveToStart(i: number) {
+    setPages(prev => {
+      const next = [...prev];
+      const [it] = next.splice(i, 1);
+      next.unshift(it);
+      return next;
+    });
+  }
+  function moveToEnd(i: number) {
+    setPages(prev => {
+      const next = [...prev];
+      const [it] = next.splice(i, 1);
+      next.push(it);
+      return next;
+    });
+  }
+
+  function removeAt(i: number) {
+    setPages(prev => {
+      const next = [...prev];
+      const [it] = next.splice(i, 1);
+      URL.revokeObjectURL(it.url);
+      return next;
+    });
   }
 
   async function submit() {
     setError(null);
-    if (chapter === '' || chapter === null) { setError('Укажите номер главы'); return; }
-    if (!pages.length) { setError('Добавьте страницы'); return; }
+    if (chapter === '' || chapter === null) {
+      setError('Укажите номер главы');
+      return;
+    }
+    if (!pages.length) {
+      setError('Добавьте страницы');
+      return;
+    }
     if (selectedTeams.length === 0 && availableTeams.length > 0) {
       setError('Выберите хотя бы одну команду');
       return;
@@ -350,15 +383,24 @@ function Uploader({ mangaId, onClose, onDone }: {
         }),
       });
 
-      const start = await startRes.json().catch(()=>null);
+      const start = await startRes.json().catch(() => null);
       if (!startRes.ok || !start?.ok) {
-        throw new Error(start?.message || `Не удалось создать черновик (HTTP ${startRes.status})`);
+        throw new Error(
+          start?.message || `Не удалось создать черновик (HTTP ${startRes.status})`
+        );
       }
 
       // Берём id из нескольких возможных ключей
-      const chapterId = Number(start?.chapterId ?? start?.id ?? start?.chapter_id ?? 0);
-      const baseKey: string =
-        String(start?.baseKey ?? start?.base_key ?? (chapterId ? `staging/manga/${mangaId}/chapters/${chapterId}` : ''));
+      const chapterId = Number(
+        start?.chapterId ?? start?.id ?? start?.chapter_id ?? 0
+      );
+      const baseKey: string = String(
+        start?.baseKey ??
+          start?.base_key ??
+          (chapterId
+            ? `staging/manga/${mangaId}/chapters/${chapterId}`
+            : '')
+      );
 
       // Без id — стоп, никакого commit
       if (!chapterId) {
@@ -369,14 +411,19 @@ function Uploader({ mangaId, onClose, onDone }: {
       // 2) Загрузка страниц последовательно
       setStepLabel('Загружаем страницы…');
       const total = pages.length;
-      const uploaded: { index: number; key: string; url: string; name: string }[] = [];
+      const uploaded: {
+        index: number;
+        key: string;
+        url: string;
+        name: string;
+      }[] = [];
 
       for (let i = 0; i < total; i++) {
         const p = pages[i];
         const ext = extFromType(p.file.type);
         const index = i + 1;
         const filename = `p${String(index).padStart(4, '0')}${ext}`;
-        const key = `${baseKey.replace(/\/+$/,'')}/${filename}`;
+        const key = `${baseKey.replace(/\/+$/, '')}/${filename}`;
 
         const { key: savedKey, url } = await uploadFileToR2(
           p.file,
@@ -411,7 +458,10 @@ function Uploader({ mangaId, onClose, onDone }: {
 
       const payload = await commitRes.json().catch(() => ({}));
       if (!commitRes.ok || !payload?.ok) {
-        throw new Error(payload?.message || `Не удалось завершить главу (HTTP ${commitRes.status})`);
+        throw new Error(
+          payload?.message ||
+            `Не удалось завершить главу (HTTP ${commitRes.status})`
+        );
       }
 
       // Обновляем team_ids отдельным запросом (НЕ трогаем /commit)
@@ -424,20 +474,18 @@ function Uploader({ mangaId, onClose, onDone }: {
               chapterId,
               teamIds: selectedTeams,
             }),
-          }).catch(err => console.warn('Не удалось обновить team_ids:', err));
+          }).catch(err =>
+            console.warn('Не удалось обновить team_ids:', err)
+          );
         } catch (err) {
           console.warn('Ошибка обновления team_ids:', err);
         }
       }
 
-      if (payload?.readUrl) {
-        window.location.href = payload.readUrl as string;
-        return;
-      }
+      // ✅ Без редиректа. Просто закрываем модалку и вызываем onDone (можно потом дернуть refresh родителя).
       onClose();
       onDone?.();
-
-    } catch (e:any) {
+    } catch (e: any) {
       setError(String(e?.message || e));
     } finally {
       setBusy(false);
@@ -473,7 +521,9 @@ function Uploader({ mangaId, onClose, onDone }: {
         {/* левая колонка */}
         <div className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm text-gray-700 dark:text-gray-300">Том</label>
+            <label className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
+              Том
+            </label>
             <input
               type="number"
               inputMode="numeric"
@@ -490,13 +540,19 @@ function Uploader({ mangaId, onClose, onDone }: {
               "
               placeholder="0"
               value={volume}
-              onChange={(e)=>setVolume(e.target.value===''?'':Number(e.target.value))}
+              onChange={(e) =>
+                setVolume(e.target.value === '' ? '' : Number(e.target.value))
+              }
             />
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Можно оставить пустым - будет 0</p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Можно оставить пустым - будет 0
+            </p>
           </div>
 
           <div>
-            <label className="mb-1 block text-sm text-gray-700 dark:text-gray-300">Номер главы *</label>
+            <label className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
+              Номер главы *
+            </label>
             <input
               type="number"
               inputMode="numeric"
@@ -513,12 +569,16 @@ function Uploader({ mangaId, onClose, onDone }: {
               "
               placeholder="например, 12"
               value={chapter}
-              onChange={(e)=>setChapter(e.target.value===''?'':Number(e.target.value))}
+              onChange={(e) =>
+                setChapter(e.target.value === '' ? '' : Number(e.target.value))
+              }
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm text-gray-700 dark:text-gray-300">Название (необязательно)</label>
+            <label className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
+              Название (необязательно)
+            </label>
             <input
               type="text"
               className="
@@ -531,14 +591,16 @@ function Uploader({ mangaId, onClose, onDone }: {
               "
               placeholder="Название"
               value={title}
-              onChange={(e)=>setTitle(e.target.value)}
+              onChange={(e) => setTitle(e.target.value)}
             />
           </div>
 
           {/* Выбор команд */}
           <div>
             <label className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
-              Команды {availableTeams.length > 0 && <span className="text-red-500">*</span>}
+              Команды {availableTeams.length > 0 && (
+                <span className="text-red-500">*</span>
+              )}
             </label>
             {loadingTeams ? (
               <div className="rounded-lg border border-black/10 dark:border-white/10 bg-white/50 dark:bg-white/[0.03] px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
@@ -550,7 +612,7 @@ function Uploader({ mangaId, onClose, onDone }: {
               </div>
             ) : (
               <div className="space-y-2 rounded-lg border border-black/10 dark:border-white/10 bg-white/50 dark:bg-white/[0.03] p-3">
-                {availableTeams.map(team => (
+                {availableTeams.map((team) => (
                   <label
                     key={team.id}
                     className="flex items-center gap-2 cursor-pointer group"
@@ -587,18 +649,28 @@ function Uploader({ mangaId, onClose, onDone }: {
             className="grid place-items-center rounded-xl border border-black/10 dark:border-white/10 bg-white/50 dark:bg-white/[0.03] p-6 text-center"
           >
             <div className="text-black/80 dark:text-gray-200">
-              Перетащите изображения сюда<br /><span className="text-gray-500">или</span>
+              Перетащите изображения сюда
+              <br />
+              <span className="text-gray-500">или</span>
             </div>
             <button
               type="button"
-              onClick={()=>inputRef.current?.click()}
+              onClick={() => inputRef.current?.click()}
               className="mt-2 rounded-md border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/[0.06] px-3 py-1.5 text-sm hover:bg-white/80 dark:hover:bg-white/[0.09] backdrop-blur transition-colors text-black dark:text-white"
             >
               выбрать файлы
             </button>
-            <input ref={inputRef} type="file" accept="image/*" multiple onChange={onSelectInput} className="hidden" />
+            <input
+              ref={inputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={onSelectInput}
+              className="hidden"
+            />
             <div className="mt-3 text-xs text-gray-600 dark:text-gray-400">
-              Порядок можно менять ниже. Конвертацию в WebP можно сделать сервером после загрузки.
+              Порядок можно менять ниже. Конвертацию в WebP можно сделать
+              сервером после загрузки.
             </div>
           </div>
         </div>
@@ -606,8 +678,12 @@ function Uploader({ mangaId, onClose, onDone }: {
         {/* правая колонка */}
         <div className="flex min-h-[420px] flex-col">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className="text-sm text-gray-700 dark:text-gray-300">Страницы</span>
-            <span className="rounded bg-black/10 dark:bg-white/10 px-2 py-0.5 text-xs text-gray-800 dark:text-gray-200">{pages.length}</span>
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              Страницы
+            </span>
+            <span className="rounded bg-black/10 dark:bg-white/10 px-2 py-0.5 text-xs text-gray-800 dark:text-gray-200">
+              {pages.length}
+            </span>
             <div className="ml-auto flex items-center gap-1">
               <button
                 type="button"
@@ -615,7 +691,12 @@ function Uploader({ mangaId, onClose, onDone }: {
                 className="inline-flex items-center gap-1 rounded-md border border-black/10 dark:border-white/10 bg-white/60 dark:bg-white/[0.06] px-2.5 py-1.5 text-xs hover:bg-white/75 dark:hover:bg-white/[0.09] backdrop-blur text-black dark:text-white"
                 title="Сортировать по имени (А↔Я)"
               >
-                {nameAsc ? <ArrowUpAZ className="h-4 w-4" /> : <ArrowDownAZ className="h-4 w-4" />} Имя
+                {nameAsc ? (
+                  <ArrowUpAZ className="h-4 w-4" />
+                ) : (
+                  <ArrowDownAZ className="h-4 w-4" />
+                )}{' '}
+                Имя
               </button>
               <button
                 type="button"
@@ -623,18 +704,34 @@ function Uploader({ mangaId, onClose, onDone }: {
                 className="inline-flex items-center gap-1 rounded-md border border-black/10 dark:border-white/10 bg-white/60 dark:bg-white/[0.06] px-2.5 py-1.5 text-xs hover:bg-white/75 dark:hover:bg-white/[0.09] backdrop-blur text-black dark:text-white"
                 title="Сортировать по числам (1↔9)"
               >
-                {numAsc ? <ArrowUp01 className="h-4 w-4" /> : <ArrowDown01 className="h-4 w-4" />} Числа
+                {numAsc ? (
+                  <ArrowUp01 className="h-4 w-4" />
+                ) : (
+                  <ArrowDown01 className="h-4 w-4" />
+                )}{' '}
+                Числа
               </button>
             </div>
           </div>
 
-          <DropEdge visible={dragging} label="Отпустить здесь — в начало" onDrop={()=>{ /* no-op */ }} />
+          <DropEdge
+            visible={dragging}
+            label="Отпустить здесь — в начало"
+            onDrop={() => {
+              /* no-op */
+            }}
+          />
 
           <div className="relative max-h-[58vh] flex-1 overflow-auto rounded-xl border border-black/10 dark:border-white/10 bg-white/40 dark:bg-white/[0.02] p-3 backdrop-blur">
             {pages.length === 0 ? (
-              <div className="grid h-full place-items-center text-sm text-gray-700 dark:text-gray-300">Страницы не выбраны</div>
+              <div className="grid h-full place-items-center text-sm text-gray-700 dark:text-gray-300">
+                Страницы не выбраны
+              </div>
             ) : (
-              <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" onDragOver={e=>e.preventDefault()}>
+              <ul
+                className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
+                onDragOver={(e) => e.preventDefault()}
+              >
                 {pages.map((p, i) => {
                   const isOverCard = overIndex === i && dragging;
                   const isDragging = dragIndex === i && dragging;
@@ -642,44 +739,104 @@ function Uploader({ mangaId, onClose, onDone }: {
                     <motion.li
                       key={p.id}
                       layout
-                      transition={{ type:'spring', stiffness:500, damping:40 }}
+                      transition={{ type: 'spring', stiffness: 500, damping: 40 }}
                       className={[
                         'group relative select-none overflow-hidden rounded-xl border shadow-sm',
                         'border-black/10 dark:border-white/10 bg-white/60 dark:bg-white/[0.04]',
-                        isDragging ? 'scale-[0.98] opacity-60' : 'hover:border-black/20 dark:hover:border-white/20',
+                        isDragging
+                          ? 'scale-[0.98] opacity-60'
+                          : 'hover:border-black/20 dark:hover:border-white/20',
                         isOverCard ? 'border-sky-400' : '',
                       ].join(' ')}
                       draggable
-                      onDragStartCapture={(e)=>{ e.dataTransfer.effectAllowed='move'; try{e.dataTransfer.setData('text/plain',String(i));}catch{}; setDragIndex(i); }}
-                      onDragOver={(e)=>{ if(!dragging) return; e.preventDefault(); const r=(e.currentTarget as HTMLLIElement).getBoundingClientRect(); setOverIndex(i); setInsertBefore(e.clientX-r.left < r.width/2); }}
-                      onDrop={(e)=>{ e.preventDefault(); if(dragIndex===null) return;
-                        setPages(prev=>{ let from=dragIndex!, to=insertBefore?i:i+1; if(from<to) to-=1; const next=[...prev]; const [it]=next.splice(from,1); next.splice(to,0,it); return next; });
-                        setDragIndex(null); setOverIndex(null);
+                      onDragStartCapture={(e) => {
+                        e.dataTransfer.effectAllowed = 'move';
+                        try {
+                          e.dataTransfer.setData('text/plain', String(i));
+                        } catch {}
+                        setDragIndex(i);
                       }}
-                      onDragEndCapture={()=>{ setDragIndex(null); setOverIndex(null); }}
+                      onDragOver={(e) => {
+                        if (!dragging) return;
+                        e.preventDefault();
+                        const r = (
+                          e.currentTarget as HTMLLIElement
+                        ).getBoundingClientRect();
+                        setOverIndex(i);
+                        setInsertBefore(e.clientX - r.left < r.width / 2);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (dragIndex === null) return;
+                        setPages((prev) => {
+                          let from = dragIndex!;
+                          let to = insertBefore ? i : i + 1;
+                          if (from < to) to -= 1;
+                          const next = [...prev];
+                          const [it] = next.splice(from, 1);
+                          next.splice(to, 0, it);
+                          return next;
+                        });
+                        setDragIndex(null);
+                        setOverIndex(null);
+                      }}
+                      onDragEndCapture={() => {
+                        setDragIndex(null);
+                        setOverIndex(null);
+                      }}
                       title={p.name}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={p.url} alt={p.name}
+                        src={p.url}
+                        alt={p.name}
                         className="aspect-[3/4] h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                         draggable={false}
                       />
                       <div className="pointer-events-none absolute inset-0">
-                        {isOverCard && <div className={`absolute top-0 ${insertBefore?'left-0':'right-0'} h-full w-[3px] bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,.8)]`} />}
+                        {isOverCard && (
+                          <div
+                            className={`absolute top-0 ${
+                              insertBefore ? 'left-0' : 'right-0'
+                            } h-full w-[3px] bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,.8)]`}
+                          />
+                        )}
                       </div>
                       <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-1 bg-gradient-to-b from-black/40 to-transparent px-2 py-1">
                         <span className="inline-flex items-center gap-1 rounded bg-black/50 px-1.5 py-0.5 text-[11px] text-white">
                           <GripVertical className="h-3.5 w-3.5" /> {i + 1}
                         </span>
                         <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                          <button type="button" onClick={()=>moveToStart(i)} className="rounded bg-black/50 p-1 text-white hover:bg-black/60" title="В начало"><ChevronsLeft className="h-4 w-4" /></button>
-                          <button type="button" onClick={()=>moveToEnd(i)} className="rounded bg-black/50 p-1 text-white hover:bg-black/60" title="В конец"><ChevronsRight className="h-4 w-4" /></button>
-                          <button type="button" onClick={()=>removeAt(i)} className="rounded bg-black/50 p-1 text-white hover:bg-red-600/80" title="Удалить"><X className="h-4 w-4" /></button>
+                          <button
+                            type="button"
+                            onClick={() => moveToStart(i)}
+                            className="rounded bg-black/50 p-1 text-white hover:bg-black/60"
+                            title="В начало"
+                          >
+                            <ChevronsLeft className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveToEnd(i)}
+                            className="rounded bg-black/50 p-1 text-white hover:bg-black/60"
+                            title="В конец"
+                          >
+                            <ChevronsRight className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeAt(i)}
+                            className="rounded bg-black/50 p-1 text-white hover:bg-red-600/80"
+                            title="Удалить"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
                         </div>
                       </div>
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-2 py-1">
-                        <div className="truncate text-xs text-white drop-shadow">{p.name}</div>
+                        <div className="truncate text-xs text-white drop-shadow">
+                          {p.name}
+                        </div>
                       </div>
                     </motion.li>
                   );
@@ -688,19 +845,34 @@ function Uploader({ mangaId, onClose, onDone }: {
             )}
           </div>
 
-          <DropEdge visible={dragging} label="Отпустить здесь — в конец" onDrop={()=>{ /* no-op */ }} />
+          <DropEdge
+            visible={dragging}
+            label="Отпустить здесь — в конец"
+            onDrop={() => {
+              /* no-op */
+            }}
+          />
 
           {/* прогресс/статус */}
-          {(busy && (stepLabel || progress>0)) && (
+          {(busy && (stepLabel || progress > 0)) && (
             <div className="mt-3 rounded-lg border border-black/10 dark:border-white/10 bg-white/50 dark:bg-white/[0.03] px-3 py-2 text-sm backdrop-blur">
-              <div className="mb-1 text-gray-800 dark:text-gray-200">{stepLabel || 'Обработка…'}</div>
+              <div className="mb-1 text-gray-800 dark:text-gray-200">
+                {stepLabel || 'Обработка…'}
+              </div>
               <div className="h-2 w-full rounded bg-black/10 dark:bg-white/10">
-                <div className="h-2 rounded bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
+                <div
+                  className="h-2 rounded bg-emerald-500 transition-all"
+                  style={{ width: `${progress}%` }}
+                />
               </div>
             </div>
           )}
 
-          {error && <div className="mt-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</div>}
+          {error && (
+            <div className="mt-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+              {error}
+            </div>
+          )}
 
           {/* Кнопки */}
           <div className="mt-4 flex items-center justify-end gap-3">
@@ -727,14 +899,28 @@ function Uploader({ mangaId, onClose, onDone }: {
   );
 }
 
-function DropEdge({ visible, label, onDrop }:{ visible:boolean; label:string; onDrop:()=>void; }) {
+function DropEdge({
+  visible,
+  label,
+  onDrop,
+}: {
+  visible: boolean;
+  label: string;
+  onDrop: () => void;
+}) {
   return (
     <AnimatePresence initial={false}>
       {visible && (
         <motion.div
           className="mb-3 grid place-items-center rounded-lg border border-dashed border-sky-500/50 bg-sky-500/10 px-3 py-2 text-xs text-sky-200"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          onDragOver={(e)=>e.preventDefault()} onDrop={(e)=>{ e.preventDefault(); onDrop(); }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            onDrop();
+          }}
         >
           {label}
         </motion.div>

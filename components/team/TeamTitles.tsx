@@ -1,3 +1,4 @@
+//components/team/TeamTitles.tsx
 'use client'
 
 import { TeamTitle } from '@/lib/team/titles'

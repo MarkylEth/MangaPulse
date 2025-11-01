@@ -1,7 +1,7 @@
 // app/api/news/[id]/comments/route.ts
 import { NextRequest } from 'next/server';
 import { neon } from '@neondatabase/serverless';
-import { getUserIdFromRequest } from '@/lib/auth/server';
+import { getAuthUser } from '@/lib/auth/route-guards';
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -14,15 +14,21 @@ type CommentRow = {
   author_avatar: string | null;
 };
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
   try {
+    const params = await context.params;
     const newsId = Number(params.id);
+    
     if (!Number.isFinite(newsId)) return Response.json({ error: 'bad_id' }, { status: 400 });
 
     const { searchParams } = new URL(req.url);
-    const limit = Math.min(200, Number(searchParams.get('limit') ?? '50')) || 50;
+    const limitRaw = Number(searchParams.get('limit') ?? '50');
+    const limit = Math.min(200, Number.isFinite(limitRaw) ? limitRaw : 50) || 50;
 
-    const rows = await sql<CommentRow>`
+    const rows = await sql`
       select
         c.id, c.body, c.created_at, c.author_id,
         coalesce(p.display_name, u.username) as author_name,
@@ -30,25 +36,30 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       from news_comments c
       left join users u on u.id = c.author_id
       left join profiles p on p.user_id = c.author_id
-      where c.news_id = ${newsId} 
-        and c.deleted_at is null
+      where c.news_id = ${newsId}
       order by c.created_at asc, c.id asc
       limit ${limit}
     `;
-    return Response.json({ data: rows }, { status: 200 });
+    
+    return Response.json({ data: rows as CommentRow[] }, { status: 200 });
   } catch (e) {
     console.error('GET /api/news/[id]/comments error', e);
     return Response.json({ error: 'server_error' }, { status: 500 });
   }
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
   try {
+    const params = await context.params;
     const newsId = Number(params.id);
+    
     if (!Number.isFinite(newsId)) return Response.json({ error: 'bad_id' }, { status: 400 });
 
-    const userId = await getUserIdFromRequest(req);
-    if (!userId) {
+    const user = await getAuthUser(req);
+    if (!user) {
       return Response.json({ error: 'unauthorized' }, { status: 401 });
     }
 
@@ -58,7 +69,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     await sql`
       insert into news_comments (news_id, body, author_id)
-      values (${newsId}, ${text}, ${userId})
+      values (${newsId}, ${text}, ${user.id})
     `;
 
     return Response.json({ ok: true }, { status: 201 });

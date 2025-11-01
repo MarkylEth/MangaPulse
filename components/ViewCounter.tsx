@@ -1,3 +1,4 @@
+//components\ViewCounter.tsx
 'use client';
 import { useEffect, useState } from 'react';
 

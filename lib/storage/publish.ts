@@ -11,6 +11,8 @@ import { query, withTransaction } from '@/lib/db';
 
 /* ========== helpers ========== */
 
+const WEBP_DIM_LIMIT = 16383; // жёсткий лимит размеров у кодека WebP
+
 const stripStaging = (k: string) => k.replace(/^staging\//, '');
 const safeInt = (v: any, d = 0) => {
   const n = Number(v);
@@ -141,15 +143,17 @@ async function analyzeImageOptimization(key: string) {
 
 /**
  * Конвертирует изображение в оптимизированный WebP для публикации
+ * — гарантирует вписывание в лимит кодека WebP 16383×16383
  */
 async function convertToOptimizedWebP(buffer: Buffer, analysis: any) {
-  const sharpInstance = sharp(buffer, { failOn: 'none' }).rotate();
+  // снимаем лимит на входные пиксели, чтобы длинные страницы не падали до ресайза
+  const sharpInstance = sharp(buffer, { failOn: 'none', limitInputPixels: 0 }).rotate();
   
   // Получаем метаданные
   const meta = await sharpInstance.metadata();
   console.log(`[PUBLISH] Processing image: ${meta.width}x${meta.height}, format: ${meta.format}, size: ${Math.round(buffer.length / 1024)}KB`);
   
-  // Применяем ресайз если изображение слишком большое
+  // Базовый ресайз по ширине
   let processor = sharpInstance;
   if (meta.width && meta.width > 1800) {
     processor = processor.resize({
@@ -159,10 +163,23 @@ async function convertToOptimizedWebP(buffer: Buffer, analysis: any) {
     });
     console.log(`[PUBLISH] Resizing from ${meta.width}px width to max 1800px`);
   }
+
+  // Гарантируем лимиты WebP по обеим осям (после первичного ресайза)
+  const tmp = await processor.metadata();
+  const w = tmp.width ?? 0;
+  const h = tmp.height ?? 0;
+  if (w > WEBP_DIM_LIMIT || h > WEBP_DIM_LIMIT) {
+    processor = processor.resize({
+      width: Math.min(w, WEBP_DIM_LIMIT),
+      height: Math.min(h, WEBP_DIM_LIMIT),
+      fit: 'inside',
+      withoutEnlargement: true,
+    });
+    console.log(`[PUBLISH] Clamping to WebP box ${WEBP_DIM_LIMIT}x${WEBP_DIM_LIMIT} from ${w}x${h}`);
+  }
   
   // Настройки WebP в зависимости от типа обработки
   let webpOptions: any;
-  
   if (analysis.needsConversion) {
     // Первичная конвертация из других форматов
     webpOptions = {
@@ -181,7 +198,7 @@ async function convertToOptimizedWebP(buffer: Buffer, analysis: any) {
     };
     console.log(`[PUBLISH] Recompressing WebP from q:${analysis.originalQuality} to q:75`);
   } else {
-    // Уже оптимизированный WebP
+    // Лёгкая прогонка уже оптимизированного WebP (для унификации)
     webpOptions = {
       quality: 80,
       effort: 4
@@ -393,7 +410,6 @@ export async function publishChapterToWasabi(
     let updateValues = [chapterId];
     let paramIndex = 2;
 
-    // Добавляем статистику WebP если колонки существуют
     if (hasWebpStats) {
       updateParts.push(`webp_compression_ratio = $${paramIndex}`);
       updateValues.push(avgCompression);
@@ -406,7 +422,6 @@ export async function publishChapterToWasabi(
       paramIndex++;
     }
 
-    // Проверяем наличие review_status колонки
     const hasReviewStatus = await hasColumn('chapters', 'review_status');
     if (hasReviewStatus) {
       updateParts.push(`review_status='published'`);
@@ -429,7 +444,6 @@ export async function publishChapterToWasabi(
     if (del.length > 0) {
       console.log(`[PUBLISH] Deleting ${del.length} staging files from R2`);
       
-      // Удаляем батчами по 1000
       for (let i = 0; i < del.length; i += 1000) {
         const batch = del.slice(i, i + 1000);
         try {

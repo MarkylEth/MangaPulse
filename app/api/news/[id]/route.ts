@@ -13,23 +13,28 @@ type Row = {
   author_id: string;
   author_name: string | null;
   author_avatar: string | null;
+  author_role: 'admin' | 'moderator' | null; 
 };
 
 export async function GET(
   _req: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const params = await context.params;
     const id = Number(params.id);
+    
     if (!Number.isFinite(id)) {
       return Response.json({ error: 'bad_id' }, { status: 400 });
     }
 
-    const rows = await sql<Row>`
+    // ✅ Убрал generic тип
+    const rows = await sql`
       select
         n.id, n.title, n.body, n.pinned, n.visible, n.created_at, n.author_id,
         coalesce(p.display_name, u.username) as author_name,
-        p.avatar_url as author_avatar
+        p.avatar_url as author_avatar,
+        p.role                             as author_role
       from news n
       left join users u on u.id = n.author_id
       left join profiles p on p.user_id = n.author_id
@@ -37,7 +42,7 @@ export async function GET(
       limit 1
     `;
 
-    const item = rows[0] ?? null;
+    const item = (rows[0] as Row | undefined) ?? null;
     if (!item) return Response.json({ error: 'not_found' }, { status: 404 });
 
     return Response.json({ data: item }, { status: 200 });

@@ -6,9 +6,18 @@ import { createPortal } from 'react-dom';
 import { Flag, X } from 'lucide-react';
 import { Select, type SelectOption } from '@/components/ui/Select';
 
+type Source = 'manga' | 'page' | 'post';
+
 type ReportReason =
-  | 'abuse' | 'harassment' | 'spam' | 'hate' | 'porn'
-  | 'illegal_trade' | 'spoiler' | 'offtopic' | 'other';
+  | 'abuse'
+  | 'harassment'
+  | 'spam'
+  | 'hate'
+  | 'porn'
+  | 'illegal_trade'
+  | 'spoiler'
+  | 'offtopic'
+  | 'other';
 
 const REASONS: SelectOption<ReportReason>[] = [
   { value: 'abuse',         label: 'Оскорбления' },
@@ -24,32 +33,62 @@ const REASONS: SelectOption<ReportReason>[] = [
 
 const NOTE_MAX = 500;
 
-type BaseProps = {
-  mangaId: number;
-  commentId: string;
-  onDone?: (hidden: boolean) => void;
-  children?: React.ReactElement<any>;
+// соответствие UI-причин и бэкенд-причин
+const reasonMap: Record<
+  ReportReason,
+  'spam' | 'offtopic' | 'insult' | 'spoiler' | 'nsfw' | 'illegal' | 'other'
+> = {
+  abuse: 'insult',
+  harassment: 'insult',
+  spam: 'spam',
+  hate: 'insult',
+  porn: 'nsfw',
+  illegal_trade: 'illegal',
+  spoiler: 'spoiler',
+  offtopic: 'offtopic',
+  other: 'other',
 };
 
-/** Публичный компонент-обёртка БЕЗ хуков: решает, показывать ли форму гостю */
-export default function ReportForm(props: BaseProps & { loggedIn?: boolean }) {
+type BaseProps = {
+  /** источник комментария */
+  source?: Source; // по умолчанию 'manga'
+  /** id манги/страницы/поста — может не понадобиться на сервере, но удобно в пропсах */
+  targetId?: string | number;
+  /** uuid комментария */
+  commentId: string;
+  /** колбэк после успешной отправки (флаг скрыт ли комментарий на сервере) */
+  onDone?: (hidden: boolean) => void;
+  /** кастомная кнопка/триггер (будет обёрнута) */
+  children?: React.ReactElement<any>;
+  /** отображать ли форму для гостя */
+  loggedIn?: boolean;
+};
+
+/** Обёртка без хуков (можно безопасно использовать в любом месте) */
+export default function ReportForm(props: BaseProps) {
   const { loggedIn = false } = props;
   if (!loggedIn) return null;
   return <ReportFormInner {...props} />;
 }
 
-/** Внутренний компонент С хуками — вызывается только для залогиненных */
-function ReportFormInner({ mangaId, commentId, onDone, children }: BaseProps) {
+/** Реализация формы с хуками (рендерится только для залогиненных) */
+function ReportFormInner({
+  source = 'manga',
+  targetId,
+  commentId,
+  onDone,
+  children,
+}: BaseProps) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState<ReportReason>('abuse');
   const [note, setNote] = useState('');
   const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [mounted, setMounted] = useState(false);
 
-  // Флаг "монтировано" — чтобы порталы не ломали SSR/гидратацию
+  // Чтобы портал не ломал гидратацию
   useEffect(() => setMounted(true), []);
 
-  // Блокировка скролла + ESC, только когда модалка открыта
+  // Лочим скролл и вешаем ESC при открытой модалке
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -69,11 +108,20 @@ function ReportFormInner({ mangaId, commentId, onDone, children }: BaseProps) {
     if (state === 'sending') return;
     setState('sending');
     try {
-      const r = await fetch(`/api/manga/${mangaId}/comments/${commentId}/report`, {
+      const payload = {
+        source,
+        commentId,
+        reason: reasonMap[reason],
+        details: note.trim(),
+        // можно передать targetId на бэкенд если нужно логировать контекст
+        targetId: targetId ?? null,
+      };
+
+      const r = await fetch(`/api/comments/report`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ reason, note }),
+        body: JSON.stringify(payload),
       });
 
       if (r.status === 401) {
@@ -82,8 +130,8 @@ function ReportFormInner({ mangaId, commentId, onDone, children }: BaseProps) {
         return;
       }
 
-      const j = await r.json().catch(() => ({} as any));
-      if (!r.ok || j?.ok === false) throw new Error(j?.message || `HTTP ${r.status}`);
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; is_hidden?: boolean };
+      if (!r.ok || j?.ok === false) throw new Error(`HTTP ${r.status}`);
 
       setState('sent');
       setOpen(false);
@@ -94,7 +142,7 @@ function ReportFormInner({ mangaId, commentId, onDone, children }: BaseProps) {
     }
   }
 
-  // Триггер (флажок) или кастомная кнопка
+  // триггер (иконка) или пользовательская кнопка
   let trigger: React.ReactNode;
   if (children && React.isValidElement(children)) {
     const ch = children as React.ReactElement<any>;
@@ -133,8 +181,9 @@ function ReportFormInner({ mangaId, commentId, onDone, children }: BaseProps) {
     <>
       {trigger}
 
-      {open && mounted && createPortal(
-        (
+      {open &&
+        mounted &&
+        createPortal(
           <div
             className="fixed inset-0 z-[10000] isolate flex items-center justify-center p-4
                        bg-black/60 backdrop-blur-sm"
@@ -189,7 +238,9 @@ function ReportFormInner({ mangaId, commentId, onDone, children }: BaseProps) {
                     "
                   />
 
-                  <label className="block text-xs text-gray-600 dark:text-gray-400">Комментарий (необязательно)</label>
+                  <label className="block text-xs text-gray-600 dark:text-gray-400">
+                    Комментарий (необязательно)
+                  </label>
                   <div>
                     <textarea
                       value={note}
@@ -243,10 +294,9 @@ function ReportFormInner({ mangaId, commentId, onDone, children }: BaseProps) {
                 </div>
               </div>
             </div>
-          </div>
-        ),
-        document.body
-      )}
+          </div>,
+          document.body
+        )}
     </>
   );
 }
